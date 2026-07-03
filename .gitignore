@@ -1,0 +1,10 @@
+# Build output
+/robocity-sim
+*.exe
+
+# Go workspace files are generated at runtime in temp dirs; never commit one here.
+go.work
+go.work.sum
+
+# Editor / OS cruft
+.DS_Store
