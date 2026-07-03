@@ -6,6 +6,7 @@
 package simcode
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
@@ -34,6 +35,16 @@ type City struct {
 	seed  int64
 	json  bool
 	quiet bool
+
+	// handler panics, captured for local debugging (isolated like the server,
+	// but surfaced instead of swallowed — the whole point of testing locally).
+	errors []handlerError
+}
+
+type handlerError struct {
+	Event string `json:"event"`
+	Robot string `json:"robot"`
+	Err   string `json:"error"`
 }
 
 // New builds a City with an in-process engine seeded from the environment the
@@ -159,7 +170,12 @@ func (c *City) dispatch(ev Event) []intentEnvelope {
 }
 
 func (c *City) runHandler(h Handler, ev Event) {
-	defer func() { _ = recover() }() // isolate handler panics, like the server
+	defer func() {
+		if r := recover(); r != nil { // isolate handler panics, like the server…
+			// …but record them so the tool can report the bug locally.
+			c.errors = append(c.errors, handlerError{Event: ev.Event, Robot: ev.Robot, Err: fmt.Sprintf("%v", r)})
+		}
+	}()
 	h(ev)
 }
 

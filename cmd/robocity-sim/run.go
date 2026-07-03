@@ -86,6 +86,12 @@ func cmdRun(o runOptions) int {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
+		// The sim exited non-zero (e.g. 3 = the controller raised on some events;
+		// it already printed its own diagnostics). Propagate the code rather than
+		// masking it as a generic tool failure.
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode()
+		}
 		fmt.Fprintf(os.Stderr, "error: running controller: %v\n", err)
 		return 1
 	}

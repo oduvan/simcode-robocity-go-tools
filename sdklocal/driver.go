@@ -76,9 +76,36 @@ func (c *City) Run() error {
 	if c.json {
 		c.printJSON(summary, feed)
 	} else {
+		c.printErrors()
 		c.printSummary(summary)
 	}
+	// Non-zero exit when the controller raised, so CI / an AI loop notices (the
+	// user's main.go usually ignores Run()'s return, so we signal via the code).
+	if len(c.errors) > 0 {
+		os.Exit(3)
+	}
 	return nil
+}
+
+// printErrors surfaces handler panics (isolated during the run) to stderr, so a
+// crashing controller is visible locally instead of silently swallowed.
+func (c *City) printErrors() {
+	if len(c.errors) == 0 {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintf(os.Stderr, "⚠ %d handler error(s) — your controller panicked:\n", len(c.errors))
+	for i, e := range c.errors {
+		if i >= 5 {
+			fmt.Fprintf(os.Stderr, "  … and %d more\n", len(c.errors)-5)
+			break
+		}
+		where := fmt.Sprintf("on '%s'", e.Event)
+		if e.Robot != "" {
+			where += fmt.Sprintf(" (robot %s)", e.Robot)
+		}
+		fmt.Fprintf(os.Stderr, "  - %s: %s\n", where, e.Err)
+	}
 }
 
 // publishState builds the state.* JSON the read model consumes and installs it as
@@ -139,15 +166,19 @@ func (c *City) printSummary(s engine.SummaryData) {
 	fmt.Printf("  metal (mined/stored): %d / %d\n", s.MetalMined, s.MetalStored)
 	fmt.Printf("  spots found       : %d\n", s.SpotsFound)
 	fmt.Printf("  discovered cells  : %d\n", s.DiscoveredCells)
+	if len(c.errors) > 0 {
+		fmt.Printf("  handler errors    : %d  <-- your controller raised (see above)\n", len(c.errors))
+	}
 }
 
 // jsonOut is the machine-readable document shape: {seed,ticks,city,summary,feed}.
 type jsonOut struct {
-	Seed    int64       `json:"seed"`
-	Ticks   int64       `json:"ticks"`
-	City    string      `json:"city"`
-	Summary jsonSummary `json:"summary"`
-	Feed    []feedLine  `json:"feed"`
+	Seed    int64          `json:"seed"`
+	Ticks   int64          `json:"ticks"`
+	City    string         `json:"city"`
+	Summary jsonSummary    `json:"summary"`
+	Errors  []handlerError `json:"errors"`
+	Feed    []feedLine     `json:"feed"`
 }
 
 type jsonResource struct {
@@ -186,7 +217,8 @@ func (c *City) printJSON(s engine.SummaryData, feed []feedLine) {
 			SpotsFound:      s.SpotsFound,
 			DiscoveredCells: s.DiscoveredCells,
 		},
-		Feed: feed,
+		Errors: append([]handlerError{}, c.errors...),
+		Feed:   feed,
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Fprintln(os.Stdout, string(b))
