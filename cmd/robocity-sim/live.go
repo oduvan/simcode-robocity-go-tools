@@ -89,21 +89,42 @@ func extractWorldState(rpc map[string]json.RawMessage) ([]byte, error) {
 	}
 	if err := json.Unmarshal(raw, &result); err == nil {
 		for _, block := range result.Content {
-			if block.Type == "text" && looksLikeWorld(block.Text) {
-				return []byte(block.Text), nil
+			if block.Type != "text" {
+				continue
+			}
+			if ws, ok := unwrapWorld([]byte(block.Text)); ok {
+				return ws, nil
 			}
 		}
 	}
 	// Some servers may return the world-state object directly under result.
-	if looksLikeWorld(string(raw)) {
-		return raw, nil
+	if ws, ok := unwrapWorld(raw); ok {
+		return ws, nil
 	}
 	return nil, fmt.Errorf("could not parse world state from MCP response")
 }
 
-func looksLikeWorld(s string) bool {
+// unwrapWorld returns the inner world-state document (with top-level world/robots/
+// buildings/tiles). get_world_state wraps it as {slug, type, deploy_status,
+// state:{...}}, so the snapshot lives under "state"; older/bare shapes are also
+// accepted. ok=false when the JSON isn't a world snapshot.
+func unwrapWorld(b []byte) ([]byte, bool) {
 	var doc map[string]json.RawMessage
-	if json.Unmarshal([]byte(s), &doc) != nil {
+	if json.Unmarshal(b, &doc) != nil {
+		return nil, false
+	}
+	if st, ok := doc["state"]; ok && hasWorld(st) {
+		return st, true
+	}
+	if hasWorld(b) {
+		return b, true
+	}
+	return nil, false
+}
+
+func hasWorld(b []byte) bool {
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(b, &doc) != nil {
 		return false
 	}
 	_, hasWorld := doc["world"]
