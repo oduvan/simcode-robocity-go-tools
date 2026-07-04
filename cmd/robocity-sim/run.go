@@ -10,16 +10,12 @@ import (
 
 // runOptions are the resolved `run` inputs.
 type runOptions struct {
-	target   string // dir or main.go path (may be "")
-	ticks    int
-	seed     int64
-	seedSet  bool
-	json     bool
-	quiet    bool
-	fresh    bool
-	fromLive bool // deprecated (live is the default now); accepted for compatibility
-	city     string
-	server   string
+	target string // dir or main.go path (may be "")
+	ticks  int
+	json   bool
+	quiet  bool
+	city   string
+	server string
 }
 
 // cmdRun materializes the local SDK, builds a temp go.work that overrides the
@@ -52,41 +48,47 @@ func cmdRun(o runOptions) int {
 		return 1
 	}
 
-	// DEFAULT = test from the city's CURRENT position: resolve which city this is
-	// (explicit --city, else auto-detect from the repo's git remote), fetch its live
-	// state, and run the new code forward from there. --fresh forces a clean seed-0
-	// world (a brand-new city, or a deterministic baseline).
+	// The tool always tests your code against your city's CURRENT state — "would
+	// this work if I deployed it right now?". Resolve which city (explicit --city,
+	// else auto-detect from the repo's git remote), fetch its live world, and run
+	// your code against it. No token / no resolvable city is a hard error (no
+	// silent fall-back to a fake empty world).
 	token := os.Getenv("SIMCODE_TOKEN")
-	liveCity, detectNote := "", ""
-	if !o.fresh {
-		switch {
-		case o.city != "" && o.city != "local":
-			liveCity = o.city
-		case token == "":
-			detectNote = "SIMCODE_TOKEN not set"
-		default:
-			repo := gitRepoSlug(pkgDir)
-			if repo == "" {
-				detectNote = "not inside a git repo with a remote"
-			} else if slug, err := detectCity(o.server, token, repo); err != nil {
-				detectNote = fmt.Sprintf("could not list your cities (%v)", err)
-			} else if slug == "" {
-				detectNote = fmt.Sprintf("no city on %s is linked to %s", o.server, repo)
-			} else {
-				liveCity = slug
-			}
-		}
+	if token == "" {
+		fmt.Fprintln(os.Stderr, `error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP"). The tool tests your code against your city's current state, so it needs your token.`)
+		return 2
 	}
 
-	cityLabel := "local"
-	if liveCity != "" {
-		cityLabel = liveCity
+	city := o.city
+	if city == "" {
+		repo := gitRepoSlug(pkgDir)
+		if repo == "" {
+			fmt.Fprintln(os.Stderr, "error: run this inside your city's git repo (so I can tell which city it is), or pass --city <slug>.")
+			return 2
+		}
+		slug, err := detectCity(o.server, token, repo)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: couldn't list your cities: %v\n", err)
+			return 1
+		}
+		if slug == "" {
+			fmt.Fprintf(os.Stderr, "error: no city on %s is linked to %s. Create/link a city first, or pass --city <slug>.\n", o.server, repo)
+			return 2
+		}
+		city = slug
+	}
+
+	snapPath, err := fetchLiveSnapshot(o.server, city, workDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: couldn't fetch '%s' state: %v\n", city, err)
+		return 1
 	}
 
 	env := append(os.Environ(),
 		"GOWORK="+workFile,
 		"ROBOCITY_SIM_TICKS="+strconv.Itoa(o.ticks),
-		"ROBOCITY_SIM_CITY="+cityLabel,
+		"ROBOCITY_SIM_CITY="+city,
+		"ROBOCITY_SIM_LIVE="+snapPath,
 	)
 	if o.json {
 		env = append(env, "ROBOCITY_SIM_JSON=1")
@@ -94,33 +96,8 @@ func cmdRun(o runOptions) int {
 	if o.quiet {
 		env = append(env, "ROBOCITY_SIM_QUIET=1")
 	}
-	if o.seedSet {
-		env = append(env, "ROBOCITY_SIM_SEED="+strconv.FormatInt(o.seed, 10))
-	}
-
-	if liveCity != "" {
-		if token == "" {
-			fmt.Fprintln(os.Stderr, "error: testing from current state needs SIMCODE_TOKEN (export it, or use --fresh)")
-			return 2
-		}
-		snapPath, err := fetchLiveSnapshot(o.server, liveCity, workDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: fetching '%s' state failed: %v (use --fresh for a clean seed-0 world)\n", liveCity, err)
-			return 1
-		}
-		env = append(env, "ROBOCITY_SIM_LIVE="+snapPath)
-		if !o.json {
-			fmt.Printf("[live] testing '%s' from its CURRENT state (approximate preview)\n", liveCity)
-		}
-	} else if !o.json {
-		why := ""
-		if detectNote != "" && !o.fresh {
-			why = " (" + detectNote + ")"
-		}
-		fmt.Printf("[fresh] seed %d, tick 0 — a clean world, not your city's current state%s\n", o.seed, why)
-		if detectNote != "" && !o.fresh {
-			fmt.Println("        set SIMCODE_TOKEN and run inside your city repo to test from where your city actually is, or pass --city <slug>.")
-		}
+	if !o.json {
+		fmt.Printf("[%s] testing your code against this city's CURRENT state\n", city)
 	}
 
 	cmd := exec.Command("go", "run", ".")
