@@ -49,16 +49,9 @@ func cmdRun(o runOptions) int {
 	}
 
 	// The tool always tests your code against your city's CURRENT state — "would
-	// this work if I deployed it right now?". Resolve which city (explicit --city,
-	// else auto-detect from the repo's git remote), fetch its live world, and run
-	// your code against it. No token / no resolvable city is a hard error (no
-	// silent fall-back to a fake empty world).
-	token := os.Getenv("SIMCODE_TOKEN")
-	if token == "" {
-		fmt.Fprintln(os.Stderr, `error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP"). The tool tests your code against your city's current state, so it needs your token.`)
-		return 2
-	}
-
+	// this work if I deployed it right now?". A city's live state is PUBLIC, so
+	// this needs NO token: resolve the repo -> city slug and fetch the public
+	// snapshot, then run your code against it.
 	city := o.city
 	if city == "" {
 		repo := gitRepoSlug(pkgDir)
@@ -66,9 +59,9 @@ func cmdRun(o runOptions) int {
 			fmt.Fprintln(os.Stderr, "error: run this inside your city's git repo (so I can tell which city it is), or pass --city <slug>.")
 			return 2
 		}
-		slug, err := detectCity(o.server, token, repo)
+		slug, err := slugForRepo(o.server, repo)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: couldn't list your cities: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error: couldn't reach %s: %v\n", o.server, err)
 			return 1
 		}
 		if slug == "" {

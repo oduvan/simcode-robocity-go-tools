@@ -22,25 +22,23 @@ compile the controller.
 ## Run your controller
 
 **It always tests your code against your city's CURRENT state** — the whole point
-is "if I push this *now*, does it work?". Run it **inside your city repo** with
-your MCP token set; the tool auto-detects which city this repo is (via the git
-remote), fetches that city's current state, and runs your code against it.
+is "if I push this *now*, does it work?". A city's live state is **public**, so
+this needs **no token**: run it inside your city repo and it auto-detects which
+city this is (via the git remote) and fetches that city's current state.
 
 ```bash
-export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
-
-robocity-sim run .                # ← test against this city's CURRENT state
+robocity-sim run .                # ← test against this city's CURRENT state (no token)
 robocity-sim run . --ticks 300    # shorter horizon
 robocity-sim run . --json         # machine-readable (parse this)
 robocity-sim run . --city other   # test against a specific city slug
 ```
 
 The first output line is `[<slug>] testing your code against this city's CURRENT
-state`. If it can't resolve a city (no token, not inside the repo, no linked
-city) it **stops with a clear error** — it never silently tests a fake empty
-world. A run is deliberately **approximate**: tiny randomness/timing differences
-from the server are fine — you're checking that your **logic works**, not
-predicting the server exactly. Real edge cases surface after you push.
+state`. If it can't resolve a city (not inside the repo, no linked city) it
+**stops with a clear error** — it never silently tests a fake empty world. A run
+is deliberately **approximate**: tiny randomness/timing differences from the
+server are fine — you're checking that your **logic works**, not predicting the
+server exactly. Real edge cases surface after you push.
 
 `main.go` is used **unchanged**: it does `import sc "github.com/lyabah/simcode-sdk-go"`,
 registers `city.On(sc.EventIdle, …)` etc., and calls `city.Run()`. The tool
@@ -70,18 +68,17 @@ tick loop for you instead of talking to Redis.
 
 ## Inspect your city without simulating
 
-Sometimes you just want to *see* your city's live data — not run your code.
-`inspect` is a thin client over the same MCP tools (JSON out, needs `SIMCODE_TOKEN`):
+Sometimes you just want to *see* your city's live data — not run your code (JSON out):
 
 ```bash
-robocity-sim inspect             # this city's status (auto-detected from the repo)
-robocity-sim inspect --state     # full current world state (robots, buildings, tiles…)
-robocity-sim inspect --logs 100  # recent activity log lines
-robocity-sim inspect --list      # all your cities
+robocity-sim inspect             # this city's status         (public, no token)
+robocity-sim inspect --state     # full current world state   (public, no token)
+robocity-sim inspect --logs 100  # recent activity log lines  (needs SIMCODE_TOKEN)
+robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOKEN)
 ```
 
-It calls `get_world_status` / `get_world_state` / `get_recent_logs` / `list_cities`
-— the same data MCP returns, straight from the terminal.
+`inspect` and `--state` read the **public** city snapshot (no token). `--logs` and
+`--list` aren't public, so they use the authed MCP tools and need `SIMCODE_TOKEN`.
 
 ## Important: it's a faithful PREVIEW, not the server
 

@@ -22,15 +22,17 @@ func inspectCmd(args []string) int {
 	}
 
 	token := os.Getenv("SIMCODE_TOKEN")
-	if token == "" {
-		fmt.Fprintln(os.Stderr, `error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP").`)
-		return 2
-	}
 
+	// --list lists YOUR cities → inherently owner-scoped, needs the token.
 	if *list {
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "error: --list needs SIMCODE_TOKEN (it lists your cities).")
+			return 2
+		}
 		return printMCP(*server, token, "list_cities", map[string]any{})
 	}
 
+	// Resolve the city — token-free via the public repo->slug lookup.
 	c := *city
 	if c == "" {
 		repo := gitRepoSlug(".")
@@ -38,7 +40,7 @@ func inspectCmd(args []string) int {
 			fmt.Fprintln(os.Stderr, "error: run this inside your city's git repo, or pass --city <slug>.")
 			return 2
 		}
-		slug, err := detectCity(*server, token, repo)
+		slug, err := slugForRepo(*server, repo)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			return 1
@@ -51,17 +53,80 @@ func inspectCmd(args []string) int {
 	}
 
 	switch {
-	case *state:
-		return printMCP(*server, token, "get_world_state", map[string]any{"city": c})
-	case *logs >= 0:
+	case *logs >= 0: // recent logs → authed MCP tool
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "error: --logs needs SIMCODE_TOKEN.")
+			return 2
+		}
 		n := *logs
 		if n == 0 {
 			n = 100
 		}
 		return printMCP(*server, token, "get_recent_logs", map[string]any{"city": c, "limit": n})
-	default: // the quick status overview
-		return printMCP(*server, token, "get_world_status", map[string]any{"city": c})
+	case *state: // full world state → PUBLIC snapshot (no token)
+		return printPublicSnapshot(*server, c)
+	default: // compact status derived from the PUBLIC snapshot (no token)
+		return printStatus(*server, c)
 	}
+}
+
+func printPublicSnapshot(server, slug string) int {
+	b, err := publicGet(server, "/api/city/"+slug+"/snapshot")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+	return printJSONBytes(b)
+}
+
+func printStatus(server, slug string) int {
+	b, err := publicGet(server, "/api/city/"+slug+"/snapshot")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+	var snap struct {
+		Tick  int64 `json:"tick"`
+		World struct {
+			Seed int64 `json:"seed"`
+		} `json:"world"`
+		Robots    []json.RawMessage `json:"robots"`
+		Buildings []struct {
+			Type string `json:"type"`
+		} `json:"buildings"`
+		Discovered []json.RawMessage `json:"discovered"`
+		Stats      json.RawMessage   `json:"stats"`
+	}
+	if err := json.Unmarshal(b, &snap); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+	byType := map[string]int{}
+	for _, bl := range snap.Buildings {
+		byType[bl.Type]++
+	}
+	out := map[string]any{
+		"city": slug, "tick": snap.Tick, "seed": snap.World.Seed,
+		"robots": len(snap.Robots), "buildings": len(snap.Buildings),
+		"buildings_by_type": byType, "discovered_cells": len(snap.Discovered),
+	}
+	if len(snap.Stats) > 0 {
+		out["stats"] = snap.Stats
+	}
+	bb, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(bb))
+	return 0
+}
+
+func printJSONBytes(b []byte) int {
+	var v any
+	if json.Unmarshal(b, &v) == nil {
+		bb, _ := json.MarshalIndent(v, "", "  ")
+		fmt.Println(string(bb))
+	} else {
+		fmt.Println(string(b))
+	}
+	return 0
 }
 
 // printMCP calls one MCP tool and pretty-prints its document as JSON.

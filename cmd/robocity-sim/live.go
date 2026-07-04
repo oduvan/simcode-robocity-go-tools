@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,68 +13,64 @@ import (
 	"time"
 )
 
-// fetchLiveSnapshot pulls a city's PUBLIC world snapshot from the MCP endpoint
-// (POST {server}/mcp, JSON-RPC tools/call → get_world_state) and writes the
-// world-state document to a file in workDir, returning its path. Best-effort and
-// APPROXIMATE: the public snapshot is fog-limited and hides spot richness /
-// in-flight command internals, so a --from-live run is a rough preview, not an
-// exact continuation. Needs SIMCODE_TOKEN. Stdlib net/http only.
+// fetchLiveSnapshot pulls a city's CURRENT world snapshot from the PUBLIC endpoint
+// (GET {server}/api/city/{slug}/snapshot) and writes it to a file in workDir,
+// returning its path. A city's live state is public (same data the shareable live
+// page uses), so NO token is needed. APPROXIMATE by construction (fog-limited,
+// no in-flight command internals) — a preview, not an exact continuation.
 func fetchLiveSnapshot(server, city, workDir string) (string, error) {
-	token := os.Getenv("SIMCODE_TOKEN")
-	if token == "" {
-		return "", fmt.Errorf("SIMCODE_TOKEN is not set (export a bearer token for the MCP server, then re-run --from-live)")
-	}
-
-	reqBody, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/call",
-		"params": map[string]any{
-			"name":      "get_world_state",
-			"arguments": map[string]any{"city": city},
-		},
-	})
-
-	url := server
-	for len(url) > 0 && url[len(url)-1] == '/' {
-		url = url[:len(url)-1]
-	}
-	url += "/mcp"
-
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	snap, err := publicGet(server, "/api/city/"+city+"/snapshot")
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("MCP server returned %s", resp.Status)
-	}
-
-	var rpc map[string]json.RawMessage
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&rpc); err != nil {
-		return "", fmt.Errorf("decoding MCP response: %w", err)
-	}
-
-	worldState, err := extractWorldState(rpc)
-	if err != nil {
-		return "", err
-	}
-
 	path := filepath.Join(workDir, "live-snapshot.json")
-	if err := os.WriteFile(path, worldState, 0o644); err != nil {
+	if err := os.WriteFile(path, snap, 0o644); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// slugForRepo resolves a repo ("owner/name") to its city slug via the PUBLIC
+// endpoint — no token. Returns "" if no city is linked to that repo.
+func slugForRepo(server, repo string) (string, error) {
+	b, err := publicGet(server, "/api/city-by-repo/"+strings.Trim(repo, "/"))
+	if err != nil {
+		if err == errNotFound {
+			return "", nil
+		}
+		return "", err
+	}
+	var d struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.Unmarshal(b, &d); err != nil {
+		return "", err
+	}
+	return d.Slug, nil
+}
+
+var errNotFound = fmt.Errorf("not found")
+
+// publicGet fetches a public (no-auth) endpoint and returns the raw body.
+func publicGet(server, path string) ([]byte, error) {
+	url := strings.TrimRight(server, "/") + path
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 // gitRepoSlug returns the `owner/repo` of the git remote in dir, or "".
@@ -119,33 +116,6 @@ func parseRepoSlug(url string) string {
 		return strings.Join(parts[len(parts)-2:], "/")
 	}
 	return ""
-}
-
-// detectCity asks the server (list_cities) for the city slug linked to repo, or "".
-func detectCity(server, token, repo string) (string, error) {
-	rpc, err := mcpCall(server, token, "list_cities", map[string]any{})
-	if err != nil {
-		return "", err
-	}
-	doc, err := contentJSON(rpc)
-	if err != nil {
-		return "", err
-	}
-	var d struct {
-		Cities []struct {
-			Slug string `json:"slug"`
-			Repo string `json:"repo"`
-		} `json:"cities"`
-	}
-	if err := json.Unmarshal(doc, &d); err != nil {
-		return "", err
-	}
-	for _, c := range d.Cities {
-		if strings.EqualFold(c.Repo, repo) {
-			return c.Slug, nil
-		}
-	}
-	return "", nil
 }
 
 // mcpCall POSTs a JSON-RPC tools/call to {server}/mcp and returns the raw result map.
@@ -197,62 +167,4 @@ func contentJSON(rpc map[string]json.RawMessage) ([]byte, error) {
 		}
 	}
 	return raw, nil
-}
-
-// extractWorldState pulls the world-state JSON out of a JSON-RPC tools/call
-// result. MCP returns content as a list of {type:"text", text:"...json..."}.
-func extractWorldState(rpc map[string]json.RawMessage) ([]byte, error) {
-	raw, ok := rpc["result"]
-	if !ok {
-		return nil, fmt.Errorf("MCP response had no result")
-	}
-	var result struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(raw, &result); err == nil {
-		for _, block := range result.Content {
-			if block.Type != "text" {
-				continue
-			}
-			if ws, ok := unwrapWorld([]byte(block.Text)); ok {
-				return ws, nil
-			}
-		}
-	}
-	// Some servers may return the world-state object directly under result.
-	if ws, ok := unwrapWorld(raw); ok {
-		return ws, nil
-	}
-	return nil, fmt.Errorf("could not parse world state from MCP response")
-}
-
-// unwrapWorld returns the inner world-state document (with top-level world/robots/
-// buildings/tiles). get_world_state wraps it as {slug, type, deploy_status,
-// state:{...}}, so the snapshot lives under "state"; older/bare shapes are also
-// accepted. ok=false when the JSON isn't a world snapshot.
-func unwrapWorld(b []byte) ([]byte, bool) {
-	var doc map[string]json.RawMessage
-	if json.Unmarshal(b, &doc) != nil {
-		return nil, false
-	}
-	if st, ok := doc["state"]; ok && hasWorld(st) {
-		return st, true
-	}
-	if hasWorld(b) {
-		return b, true
-	}
-	return nil, false
-}
-
-func hasWorld(b []byte) bool {
-	var doc map[string]json.RawMessage
-	if json.Unmarshal(b, &doc) != nil {
-		return false
-	}
-	_, hasWorld := doc["world"]
-	_, hasRobots := doc["robots"]
-	return hasWorld || hasRobots
 }
