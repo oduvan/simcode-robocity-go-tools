@@ -56,26 +56,22 @@ func runCmd(args []string) int {
 	seed := fs.Int64("seed", engine.CanonicalSeed, "world seed (default 7, the canonical map)")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	quiet := fs.Bool("quiet", false, "suppress the per-tick feed; print only the summary")
-	fromLive := fs.Bool("from-live", false, "seed the world from a live city (approximate preview)")
-	city := fs.String("city", "local", "city slug (with --from-live) / label")
-	server := fs.String("server", "https://robocity.lyabah.com", "MCP server base URL (with --from-live)")
+	fresh := fs.Bool("fresh", false, "ignore the live city; run a clean seed-0 world (a new city / deterministic baseline). Default tests from your city's CURRENT state.")
+	fromLive := fs.Bool("from-live", false, "(deprecated; live is the default now) accepted for compatibility")
+	city := fs.String("city", "", "city slug to test against (default: auto-detected from this repo's git remote)")
+	server := fs.String("server", "https://robocity.lyabah.com", "MCP server base URL")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	// Was --seed supplied explicitly? (so a from-live seed isn't overridden)
+	// Was --seed supplied explicitly? (so a live seed isn't overridden)
 	seedSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "seed" {
 			seedSet = true
 		}
 	})
-
-	if *fromLive && *city == "local" {
-		fmt.Fprintln(os.Stderr, "error: --from-live requires --city <slug>")
-		return 2
-	}
 
 	return cmdRun(runOptions{
 		target:   target,
@@ -84,6 +80,7 @@ func runCmd(args []string) int {
 		seedSet:  seedSet,
 		json:     *jsonOut,
 		quiet:    *quiet,
+		fresh:    *fresh,
 		fromLive: *fromLive,
 		city:     *city,
 		server:   *server,

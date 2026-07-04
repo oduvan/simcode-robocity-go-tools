@@ -16,7 +16,8 @@ type runOptions struct {
 	seedSet  bool
 	json     bool
 	quiet    bool
-	fromLive bool
+	fresh    bool
+	fromLive bool // deprecated (live is the default now); accepted for compatibility
 	city     string
 	server   string
 }
@@ -51,10 +52,41 @@ func cmdRun(o runOptions) int {
 		return 1
 	}
 
+	// DEFAULT = test from the city's CURRENT position: resolve which city this is
+	// (explicit --city, else auto-detect from the repo's git remote), fetch its live
+	// state, and run the new code forward from there. --fresh forces a clean seed-0
+	// world (a brand-new city, or a deterministic baseline).
+	token := os.Getenv("SIMCODE_TOKEN")
+	liveCity, detectNote := "", ""
+	if !o.fresh {
+		switch {
+		case o.city != "" && o.city != "local":
+			liveCity = o.city
+		case token == "":
+			detectNote = "SIMCODE_TOKEN not set"
+		default:
+			repo := gitRepoSlug(pkgDir)
+			if repo == "" {
+				detectNote = "not inside a git repo with a remote"
+			} else if slug, err := detectCity(o.server, token, repo); err != nil {
+				detectNote = fmt.Sprintf("could not list your cities (%v)", err)
+			} else if slug == "" {
+				detectNote = fmt.Sprintf("no city on %s is linked to %s", o.server, repo)
+			} else {
+				liveCity = slug
+			}
+		}
+	}
+
+	cityLabel := "local"
+	if liveCity != "" {
+		cityLabel = liveCity
+	}
+
 	env := append(os.Environ(),
 		"GOWORK="+workFile,
 		"ROBOCITY_SIM_TICKS="+strconv.Itoa(o.ticks),
-		"ROBOCITY_SIM_CITY="+o.city,
+		"ROBOCITY_SIM_CITY="+cityLabel,
 	)
 	if o.json {
 		env = append(env, "ROBOCITY_SIM_JSON=1")
@@ -66,16 +98,28 @@ func cmdRun(o runOptions) int {
 		env = append(env, "ROBOCITY_SIM_SEED="+strconv.FormatInt(o.seed, 10))
 	}
 
-	// --from-live: fetch the public snapshot and hand it to the subprocess.
-	if o.fromLive {
-		snapPath, err := fetchLiveSnapshot(o.server, o.city, workDir)
+	if liveCity != "" {
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "error: testing from current state needs SIMCODE_TOKEN (export it, or use --fresh)")
+			return 2
+		}
+		snapPath, err := fetchLiveSnapshot(o.server, liveCity, workDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: --from-live failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error: fetching '%s' state failed: %v (use --fresh for a clean seed-0 world)\n", liveCity, err)
 			return 1
 		}
 		env = append(env, "ROBOCITY_SIM_LIVE="+snapPath)
-		if !o.json && !o.quiet {
-			fmt.Printf("[from-live] seeded from %s @ %s (approximate preview)\n", o.city, o.server)
+		if !o.json {
+			fmt.Printf("[live] testing '%s' from its CURRENT state (approximate preview)\n", liveCity)
+		}
+	} else if !o.json {
+		why := ""
+		if detectNote != "" && !o.fresh {
+			why = " (" + detectNote + ")"
+		}
+		fmt.Printf("[fresh] seed %d, tick 0 — a clean world, not your city's current state%s\n", o.seed, why)
+		if detectNote != "" && !o.fresh {
+			fmt.Println("        set SIMCODE_TOKEN and run inside your city repo to test from where your city actually is, or pass --city <slug>.")
 		}
 	}
 

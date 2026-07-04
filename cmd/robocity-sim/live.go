@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -72,6 +74,129 @@ func fetchLiveSnapshot(server, city, workDir string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// gitRepoSlug returns the `owner/repo` of the git remote in dir, or "".
+func gitRepoSlug(dir string) string {
+	if dir == "" {
+		dir = "."
+	}
+	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	return parseRepoSlug(strings.TrimSpace(string(out)))
+}
+
+// parseRepoSlug turns a git remote URL into `owner/repo`:
+// git@github.com:owner/repo.git | https://github.com/owner/repo(.git).
+func parseRepoSlug(url string) string {
+	url = strings.TrimSuffix(strings.TrimSpace(url), ".git")
+	if url == "" {
+		return ""
+	}
+	var path string
+	switch {
+	case strings.HasPrefix(url, "git@") && strings.Contains(url, ":"):
+		path = url[strings.Index(url, ":")+1:]
+	case strings.Contains(url, "://"):
+		rest := url[strings.Index(url, "://")+3:]
+		if i := strings.Index(rest, "/"); i >= 0 {
+			path = rest[i+1:]
+		} else {
+			path = rest
+		}
+	default:
+		path = url
+	}
+	var parts []string
+	for _, p := range strings.Split(path, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) >= 2 {
+		return strings.Join(parts[len(parts)-2:], "/")
+	}
+	return ""
+}
+
+// detectCity asks the server (list_cities) for the city slug linked to repo, or "".
+func detectCity(server, token, repo string) (string, error) {
+	rpc, err := mcpCall(server, token, "list_cities", map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	doc, err := contentJSON(rpc)
+	if err != nil {
+		return "", err
+	}
+	var d struct {
+		Cities []struct {
+			Slug string `json:"slug"`
+			Repo string `json:"repo"`
+		} `json:"cities"`
+	}
+	if err := json.Unmarshal(doc, &d); err != nil {
+		return "", err
+	}
+	for _, c := range d.Cities {
+		if strings.EqualFold(c.Repo, repo) {
+			return c.Slug, nil
+		}
+	}
+	return "", nil
+}
+
+// mcpCall POSTs a JSON-RPC tools/call to {server}/mcp and returns the raw result map.
+func mcpCall(server, token, name string, args map[string]any) (map[string]json.RawMessage, error) {
+	reqBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": name, "arguments": args},
+	})
+	url := strings.TrimRight(server, "/") + "/mcp"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("MCP server returned %s", resp.Status)
+	}
+	var rpc map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&rpc); err != nil {
+		return nil, err
+	}
+	return rpc, nil
+}
+
+// contentJSON pulls the first text content block's JSON out of a tools/call result.
+func contentJSON(rpc map[string]json.RawMessage) ([]byte, error) {
+	raw, ok := rpc["result"]
+	if !ok {
+		return nil, fmt.Errorf("MCP response had no result")
+	}
+	var result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &result); err == nil {
+		for _, b := range result.Content {
+			if b.Type == "text" {
+				return []byte(b.Text), nil
+			}
+		}
+	}
+	return raw, nil
 }
 
 // extractWorldState pulls the world-state JSON out of a JSON-RPC tools/call

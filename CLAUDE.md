@@ -21,13 +21,28 @@ compile the controller.
 
 ## Run your controller
 
+**By default it tests from your city's CURRENT state** — the whole point is
+"if I push this *now*, does it do something sensible?". Run it **inside your city
+repo** with your MCP token set; the tool auto-detects which city this repo is
+(via the git remote), fetches that city's live state, and runs your new code
+forward from there.
+
 ```bash
-robocity-sim run /path/to/my-city                 # 500 ticks, canonical seed 7
-robocity-sim run /path/to/my-city/main.go          # or point at the file
-robocity-sim run . --ticks 300                     # shorter
-robocity-sim run . --quiet                          # summary only
-robocity-sim run . --json                           # machine-readable (parse this)
+export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
+
+robocity-sim run .                # ← test from your city's CURRENT state (default)
+robocity-sim run . --ticks 300    # shorter horizon
+robocity-sim run . --json         # machine-readable (parse this)
+
+robocity-sim run . --fresh        # clean seed-0 world (a brand-new city / a baseline)
+robocity-sim run . --city other   # test against a specific city slug
 ```
+
+The first output line tells you the mode: `[live] testing '<slug>' from its
+CURRENT state` or `[fresh] seed 7, tick 0`. If auto-detect can't resolve a city
+(no token, not in the repo, no linked city) it falls back to `[fresh]` and says
+why. A live run is deliberately **approximate** — a quick "does it work now"
+check, not a perfect sim; real edge cases surface after you push.
 
 `main.go` is used **unchanged**: it does `import sc "github.com/lyabah/simcode-sdk-go"`,
 registers `city.On(sc.EventIdle, …)` etc., and calls `city.Run()`. The tool
@@ -65,9 +80,12 @@ tick loop for you instead of talking to Redis.
   the server (intents lag one tick, just like production). Parity is maintained
   against the Go source; if you find a divergence in mechanics, treat it as a bug
   in this tool.
-- `--from-live --city <slug>` (needs `SIMCODE_TOKEN`) seeds from a city's current
-  **public** snapshot, which is lossy (fog, hidden richness). Treat that mode as
-  an **approximate** preview, not an exact continuation.
+- The **default (live) mode** seeds from your city's current **public** snapshot,
+  which is slightly lossy (fog-of-war hides undiscovered cells / spot richness, and
+  in-flight command internals aren't carried). So a live run is an **approximate**
+  continuation — perfect for "does my new code do something sensible right now",
+  not a bit-exact forecast. `--fresh` is exact (deterministic seed-0 world) but is
+  a *different* starting point than your running city.
 
 ## Handler errors & subscription fidelity
 
