@@ -28,6 +28,8 @@ func run(args []string) int {
 	switch args[0] {
 	case "run":
 		return runCmd(args[1:])
+	case "inspect":
+		return inspectCmd(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -77,19 +79,26 @@ Tests your code against your city's CURRENT state (needs SIMCODE_TOKEN). Run it
 inside your city's repo; the city is auto-detected from the git remote.
 
 Usage:
-  robocity-sim run [dir-or-main.go] [flags]
+  robocity-sim run     [dir-or-main.go] [flags]   # test your code vs the live city
+  robocity-sim inspect [flags]                    # print live city info (like the MCP tools)
 
-Flags:
+run flags:
   --ticks N       ticks to simulate (default 500)
   --json          emit a JSON document ({seed,ticks,city,summary,errors,feed}) instead of text
   --quiet         suppress the per-tick feed; print only the SUMMARY
   --city SLUG     city slug to test against (default: auto-detected from this repo's git remote)
   --server URL    MCP server base URL (default https://robocity.lyabah.com)
 
+inspect flags:
+  --state         full current world state    --logs N   recent activity log lines
+  --list          list your cities            --city SLUG / --server URL
+
 Examples:
   export SIMCODE_TOKEN=...               # dashboard → "Connect via MCP"
   robocity-sim run                       # test ./ against this repo's city, current state
   robocity-sim run . --ticks 300
-  robocity-sim run . --city my-city --json
+  robocity-sim inspect                   # this city's status
+  robocity-sim inspect --state           # full world state (JSON)
+  robocity-sim inspect --logs 100        # recent activity log
 `)
 }

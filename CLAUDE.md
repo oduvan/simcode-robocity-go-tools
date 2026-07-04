@@ -68,6 +68,21 @@ tick loop for you instead of talking to Redis.
   run of it shows `mined: 0` and `buildings: base=1` — beat that. See
   `examples/mine` for a controller that mines and hauls.
 
+## Inspect your city without simulating
+
+Sometimes you just want to *see* your city's live data — not run your code.
+`inspect` is a thin client over the same MCP tools (JSON out, needs `SIMCODE_TOKEN`):
+
+```bash
+robocity-sim inspect             # this city's status (auto-detected from the repo)
+robocity-sim inspect --state     # full current world state (robots, buildings, tiles…)
+robocity-sim inspect --logs 100  # recent activity log lines
+robocity-sim inspect --list      # all your cities
+```
+
+It calls `get_world_status` / `get_world_state` / `get_recent_logs` / `list_cities`
+— the same data MCP returns, straight from the terminal.
+
 ## Important: it's a faithful PREVIEW, not the server
 
 - The engine here is a **re-implementation** of the server's Go engine (a
