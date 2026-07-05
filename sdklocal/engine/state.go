@@ -17,7 +17,14 @@ func (m *Module) robotForm(r *robot) map[string]any {
 }
 
 func (m *Module) buildingForm(b *building) map[string]any {
-	bf := map[string]any{"id": b.id, "type": b.typ, "pos": []int{b.pos[0], b.pos[1]}, "status": b.status}
+	w, h := b.w, b.h
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	bf := map[string]any{"id": b.id, "type": b.typ, "pos": []int{b.pos[0], b.pos[1]}, "w": w, "h": h, "status": b.status}
 	if b.hasStorage {
 		bf["storage"] = map[string]any{"ore": b.ore, "metal": b.metal, "capacity": b.cap}
 	}

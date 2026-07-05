@@ -143,13 +143,15 @@ func (m *Module) doBuild(args []any, tick int64) {
 	x := argInt(args, 1, 0)
 	y := argInt(args, 2, 0)
 
+	// (x,y) is the anchor = min corner; the building occupies the whole w×h box.
+	w, h := m.cfg.footprint(typ)
 	reason := ""
 	switch {
 	case typ == BuildingBase:
 		reason = "base_not_buildable"
 	case !hasRecipe(m.cfg.Recipes, typ):
 		reason = "unknown_type"
-	case wd.buildingAt(x, y) != nil:
+	case !wd.footprintFree(x, y, w, h):
 		reason = "cell_occupied"
 	}
 	if reason == "" && typ == BuildingMining {
@@ -167,7 +169,7 @@ func (m *Module) doBuild(args []any, tick int64) {
 	wd.nextBuild++
 	id := platID(wd.nextBuild)
 	b := &building{
-		id: id, typ: typ, pos: [2]int{x, y}, status: StatusConstructing,
+		id: id, typ: typ, pos: [2]int{x, y}, w: w, h: h, status: StatusConstructing,
 		cons: &construction{
 			targetType: typ,
 			reqOre:     recipe.Ore,

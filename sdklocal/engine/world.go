@@ -78,7 +78,8 @@ func (c *construction) fulfilled() bool {
 type building struct {
 	id     string
 	typ    string
-	pos    [2]int
+	pos    [2]int // anchor = MIN corner of the footprint
+	w, h   int    // footprint size in cells (>=1); occupies [x,x+w)×[y,y+h)
 	status string
 
 	hasStorage  bool
@@ -236,9 +237,18 @@ func (wd *world) removeRobot(id string) {
 }
 
 func (wd *world) addBuilding(b *building) {
+	// Derive the footprint from config when the caller left it unset; every
+	// building covers at least its anchor cell. Occupy every covered cell.
+	if b.w < 1 || b.h < 1 {
+		b.w, b.h = wd.cfg.footprint(b.typ)
+	}
 	wd.buildings[b.id] = b
 	wd.buildOrd = append(wd.buildOrd, b.id)
-	wd.cellAt(b.pos[0], b.pos[1]).building = b.id
+	for y := b.pos[1]; y < b.pos[1]+b.h; y++ {
+		for x := b.pos[0]; x < b.pos[0]+b.w; x++ {
+			wd.cellAt(x, y).building = b.id
+		}
+	}
 }
 
 func (wd *world) removeBuilding(id string) {
@@ -246,8 +256,19 @@ func (wd *world) removeBuilding(id string) {
 	if b == nil {
 		return
 	}
-	if cl := wd.cellAt(b.pos[0], b.pos[1]); cl.building == id {
-		cl.building = ""
+	w, h := b.w, b.h
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	for y := b.pos[1]; y < b.pos[1]+h; y++ {
+		for x := b.pos[0]; x < b.pos[0]+w; x++ {
+			if cl := wd.cellAt(x, y); cl.building == id {
+				cl.building = ""
+			}
+		}
 	}
 	delete(wd.buildings, id)
 	for i, v := range wd.buildOrd {
@@ -282,6 +303,19 @@ func (wd *world) buildingAt(x, y int) *building {
 		return wd.buildings[c.building]
 	}
 	return nil
+}
+
+// footprintFree reports whether every cell of the w×h rectangle anchored at
+// (x,y) is currently free of any building (used to validate placement).
+func (wd *world) footprintFree(x, y, w, h int) bool {
+	for cy := y; cy < y+h; cy++ {
+		for cx := x; cx < x+w; cx++ {
+			if wd.buildingAt(cx, cy) != nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // reveal marks all cells within Chebyshev radius r of (cx,cy) as discovered.

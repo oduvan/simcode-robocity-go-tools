@@ -73,6 +73,8 @@ type pBuilding struct {
 	Type string `json:"type"`
 	X    int    `json:"x"`
 	Y    int    `json:"y"`
+	W    int    `json:"w"` // footprint width (>=1)
+	H    int    `json:"h"` // footprint height (>=1)
 	Cap  int    `json:"cap"`
 }
 
@@ -123,7 +125,7 @@ func buildParityFromEngine(fx pFixture) pFixture {
 	builds := []pBuilding{}
 	for _, id := range wd.buildOrd {
 		b := wd.buildings[id]
-		builds = append(builds, pBuilding{ID: b.id, Type: b.typ, X: b.pos[0], Y: b.pos[1], Cap: b.cap})
+		builds = append(builds, pBuilding{ID: b.id, Type: b.typ, X: b.pos[0], Y: b.pos[1], W: b.w, H: b.h, Cap: b.cap})
 	}
 	sort.Slice(builds, func(i, j int) bool { return builds[i].ID < builds[j].ID })
 

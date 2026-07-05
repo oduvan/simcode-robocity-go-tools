@@ -45,6 +45,11 @@ type Recipe struct {
 	BuildTicks int // work units; a fulfilled site self-completes over BuildTicks ticks
 }
 
+// Footprint is a building type's rectangular size in cells (W wide, H tall). A
+// building's anchor (pos) is the MIN corner; it occupies every cell in
+// [x, x+W) × [y, y+H). A robot on ANY covered cell can interact with it.
+type Footprint struct{ W, H int }
+
 // Config holds every tunable number for the module. Ported verbatim from
 // game/modules/robot_city/config.go DefaultConfig — same numbers → same run.
 type Config struct {
@@ -85,8 +90,21 @@ type Config struct {
 	// Construction recipes per building type (Base is not buildable).
 	Recipes map[string]Recipe
 
+	// Footprints per building type. Any type not listed defaults to 1×1 (see
+	// footprint). Storage is a 2×2 hub; base/mining/flying_station stay 1×1.
+	Footprints map[string]Footprint
+
 	// Robot production at the Base (consumes the Base's reserved store).
 	RobotRecipe Recipe
+}
+
+// footprint returns the W×H cell footprint for a building type, defaulting to
+// 1×1 for any type not explicitly configured.
+func (c Config) footprint(typ string) (w, h int) {
+	if f, ok := c.Footprints[typ]; ok && f.W > 0 && f.H > 0 {
+		return f.W, f.H
+	}
+	return 1, 1
 }
 
 // DefaultConfig returns the provisional v1 tuning values (== Go DefaultConfig()).
@@ -123,6 +141,9 @@ func DefaultConfig() Config {
 			BuildingMining:        {Ore: 6, Metal: 3, BuildTicks: 4},
 			BuildingStorage:       {Ore: 3, Metal: 0, BuildTicks: 3},
 			BuildingFlyingStation: {Ore: 4, Metal: 2, BuildTicks: 3},
+		},
+		Footprints: map[string]Footprint{
+			BuildingStorage: {W: 2, H: 2},
 		},
 		RobotRecipe: Recipe{Ore: 12, Metal: 6, BuildTicks: 8},
 	}
