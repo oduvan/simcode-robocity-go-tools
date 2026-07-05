@@ -45,6 +45,10 @@ type pConfig struct {
 	StorageCap          int     `json:"storage_cap"`
 	BaseStorageCap      int     `json:"base_storage_cap"`
 	IdleResendTicks     int     `json:"idle_resend_ticks"`
+	QuestBaseOre        int     `json:"quest_base_ore"`
+	QuestBaseMetal      int     `json:"quest_base_metal"`
+	QuestGrowthNum      int     `json:"quest_growth_num"`
+	QuestGrowthDen      int     `json:"quest_growth_den"`
 	MiningRecipe        pRecipe `json:"mining_recipe"`
 	StorageRecipe       pRecipe `json:"storage_recipe"`
 	FlyingStationRecipe pRecipe `json:"flying_station_recipe"`
@@ -69,13 +73,17 @@ type pRobot struct {
 }
 
 type pBuilding struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	X    int    `json:"x"`
-	Y    int    `json:"y"`
-	W    int    `json:"w"` // footprint width (>=1)
-	H    int    `json:"h"` // footprint height (>=1)
-	Cap  int    `json:"cap"`
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	W     int    `json:"w"` // footprint width (>=1)
+	H     int    `json:"h"` // footprint height (>=1)
+	Cap   int    `json:"cap"`
+	Level int    `json:"level,omitempty"` // Base only: the objective level (starts at 1)
+	// Base only: the initial quest requirement (raw ore+metal to level up).
+	QuestOre   int `json:"quest_ore,omitempty"`
+	QuestMetal int `json:"quest_metal,omitempty"`
 }
 
 type pFixture struct {
@@ -125,7 +133,12 @@ func buildParityFromEngine(fx pFixture) pFixture {
 	builds := []pBuilding{}
 	for _, id := range wd.buildOrd {
 		b := wd.buildings[id]
-		builds = append(builds, pBuilding{ID: b.id, Type: b.typ, X: b.pos[0], Y: b.pos[1], W: b.w, H: b.h, Cap: b.cap})
+		pb := pBuilding{ID: b.id, Type: b.typ, X: b.pos[0], Y: b.pos[1], W: b.w, H: b.h, Cap: b.cap}
+		if b.typ == BuildingBase {
+			pb.Level = b.level
+			pb.QuestOre, pb.QuestMetal = cfg.questFor(b.level)
+		}
+		builds = append(builds, pb)
 	}
 	sort.Slice(builds, func(i, j int) bool { return builds[i].ID < builds[j].ID })
 
@@ -144,6 +157,8 @@ func buildParityFromEngine(fx pFixture) pFixture {
 			StartOre: cfg.StartOre, StartMetal: cfg.StartMetal, ProducedOre: cfg.ProducedOre, ProducedMetal: cfg.ProducedMetal,
 			MiningSpeed: cfg.MiningSpeed, MiningStorageCap: cfg.MiningStorageCap,
 			StorageCap: cfg.StorageCap, BaseStorageCap: cfg.BaseStorageCap, IdleResendTicks: cfg.IdleResendTicks,
+			QuestBaseOre: cfg.QuestBaseOre, QuestBaseMetal: cfg.QuestBaseMetal,
+			QuestGrowthNum: cfg.QuestGrowthNum, QuestGrowthDen: cfg.QuestGrowthDen,
 			MiningRecipe: rec(BuildingMining), StorageRecipe: rec(BuildingStorage),
 			FlyingStationRecipe: rec(BuildingFlyingStation),
 			RobotRecipe:         pRecipe{Ore: cfg.RobotRecipe.Ore, Metal: cfg.RobotRecipe.Metal, BuildTicks: cfg.RobotRecipe.BuildTicks},

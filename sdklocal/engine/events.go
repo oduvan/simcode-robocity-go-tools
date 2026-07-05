@@ -23,6 +23,8 @@ const (
 	EventRobotDestroyed       = "robot_destroyed"
 	EventChargeComplete       = "charge_complete"
 	EventMessage              = "message"
+	EventBaseLevelUp          = "base_level_up"
+	EventQuestUpdated         = "quest_updated"
 )
 
 // Command names (script -> GAME). Mirror of contract.AllCommands.

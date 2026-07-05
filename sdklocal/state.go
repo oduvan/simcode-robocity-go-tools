@@ -69,6 +69,8 @@ type buildingState struct {
 	Spot         *Spot          `json:"spot"`
 	Production   map[string]any `json:"production"`
 	Construction map[string]any `json:"construction"`
+	Level        int            `json:"level"`          // Base only: the objective level (1+)
+	Quest        map[string]any `json:"quest"`          // Base only: {required, progress}
 }
 
 type tileState struct {

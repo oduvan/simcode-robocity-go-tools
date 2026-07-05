@@ -94,6 +94,10 @@ type building struct {
 	prodActive   bool
 	prodProgress int
 
+	// Base leveling (the game objective). Starts at 1; the current quest is
+	// derived via Config.questFor. Only meaningful for the Base.
+	level int
+
 	cons *construction
 }
 
@@ -142,6 +146,7 @@ func (wd *world) generate(city string, seed int64) {
 	base := &building{
 		id: "base-1", typ: BuildingBase, pos: [2]int{0, 0},
 		status: StatusActive, hasStorage: true, cap: wd.cfg.BaseStorageCap,
+		level: 1, // the objective starts at level 1 (quest derived via questFor)
 	}
 	wd.cellAt(0, 0).spot = nil
 	wd.addBuilding(base)

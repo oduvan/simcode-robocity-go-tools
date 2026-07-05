@@ -10,6 +10,10 @@ type Module struct {
 	evbuf []Event
 	feed  []FeedEvent
 	tick  int64
+
+	// questAnnounced latches the one-time initial quest_updated emission per
+	// (re)start (reset by ResetWorld). See advanceBaseQuest.
+	questAnnounced bool
 }
 
 // New returns a Module with the default (provisional) tuning config.
@@ -26,6 +30,22 @@ func (m *Module) ResetWorld(city string, seed int64) {
 	m.wd = newWorld(m.cfg)
 	m.wd.generate(city, seed)
 	m.feed = nil
+	m.questAnnounced = false
+}
+
+// objective returns the game-agnostic one-line goal summary (Base level + next
+// quest). Empty when there is no Base. (Mirror of module.go objective.)
+func (m *Module) objective() string {
+	b := m.wd.base()
+	if b == nil {
+		return ""
+	}
+	lvl := b.level
+	if lvl < 1 {
+		lvl = 1
+	}
+	ore, metal := m.cfg.questFor(lvl)
+	return "⭐ Base level " + itoa(lvl) + " — next: " + itoa(ore) + " ore + " + itoa(metal) + " metal"
 }
 
 func (m *Module) emit(name, robot string, tick int64, payload any) {
@@ -61,6 +81,10 @@ func (m *Module) Advance(tick int64) []Event {
 	wd.pendingSpawn = nil
 
 	m.advanceProduction(tick)
+	// Base quests / leveling (the objective): consume-and-level-up when the store
+	// satisfies the current quest. Runs after production so both compete for the
+	// same reserved store.
+	m.advanceBaseQuest(tick)
 	m.advanceMining(tick)
 
 	for _, id := range append([]string(nil), wd.robotOrd...) {

@@ -43,6 +43,18 @@ func (m *Module) buildingForm(b *building) map[string]any {
 			"progress": float64(b.prodProgress) / float64(denom),
 			"queued":   b.prodQueue,
 		}
+		// Leveling: the Base's current level + quest (required vs progress). This
+		// is the game objective; only the Base carries it.
+		lvl := b.level
+		if lvl < 1 {
+			lvl = 1
+		}
+		reqOre, reqMetal := m.cfg.questFor(lvl)
+		bf["level"] = lvl
+		bf["quest"] = map[string]any{
+			"required": map[string]any{"ore": reqOre, "metal": reqMetal},
+			"progress": map[string]any{"ore": minInt(b.ore, reqOre), "metal": minInt(b.metal, reqMetal)},
+		}
 	}
 	if b.status == StatusConstructing && b.cons != nil {
 		bf["construction"] = map[string]any{
@@ -167,6 +179,8 @@ func (m *Module) StateJSON(tick, seq int64) map[string]string {
 		"tiles":      marshal(tiles),
 		"discovered": marshal(discovered),
 		"stats":      marshal(m.statsMap()),
+		// Game-agnostic goal summary (Base level + next quest) — the shell topbar.
+		"objective": marshal(m.objective()),
 	}
 }
 

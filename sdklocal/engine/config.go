@@ -87,6 +87,17 @@ type Config struct {
 	// Reliability.
 	IdleResendTicks int
 
+	// Base quests (the game objective). The Base starts at level 1; each level
+	// poses a quest = a required amount of raw ore+metal that must accumulate in
+	// the Base's store. When held, the amount is CONSUMED and the Base levels up
+	// to the next, harder quest. questFor(level) escalates the requirement
+	// geometrically from the base amounts by QuestGrowthNum/QuestGrowthDen per
+	// level. (Mirror of config.go.)
+	QuestBaseOre   int
+	QuestBaseMetal int
+	QuestGrowthNum int
+	QuestGrowthDen int
+
 	// Construction recipes per building type (Base is not buildable).
 	Recipes map[string]Recipe
 
@@ -105,6 +116,26 @@ func (c Config) footprint(typ string) (w, h int) {
 		return f.W, f.H
 	}
 	return 1, 1
+}
+
+// questFor returns the ore+metal the Base must accumulate to clear the quest at
+// the given level (level 1 = the base amounts, each subsequent level scaled by
+// QuestGrowthNum/QuestGrowthDen). Pure + deterministic integer math, so it
+// reproduces the server engine exactly. Level < 1 is treated as 1.
+func (c Config) questFor(level int) (ore, metal int) {
+	if level < 1 {
+		level = 1
+	}
+	ore, metal = c.QuestBaseOre, c.QuestBaseMetal
+	num, den := c.QuestGrowthNum, c.QuestGrowthDen
+	if num <= 0 || den <= 0 {
+		return ore, metal
+	}
+	for i := 1; i < level; i++ {
+		ore = ore * num / den
+		metal = metal * num / den
+	}
+	return ore, metal
 }
 
 // DefaultConfig returns the provisional v1 tuning values (== Go DefaultConfig()).
@@ -136,6 +167,11 @@ func DefaultConfig() Config {
 		BaseStorageCap: 200,
 
 		IdleResendTicks: 3,
+
+		QuestBaseOre:   40,
+		QuestBaseMetal: 20,
+		QuestGrowthNum: 3,
+		QuestGrowthDen: 2,
 
 		Recipes: map[string]Recipe{
 			BuildingMining:        {Ore: 6, Metal: 3, BuildTicks: 4},

@@ -185,6 +185,13 @@ func (b *Building) Production() map[string]any { return b.data.Production }
 // Construction is the in-progress recipe on a constructing building (raw bag).
 func (b *Building) Construction() map[string]any { return b.data.Construction }
 
+// Level is the Base's current objective level (1+). 0 for non-Base buildings.
+func (b *Building) Level() int { return b.data.Level }
+
+// Quest is the Base's current quest: {required:{ore,metal}, progress:{ore,metal}}.
+// Nil for non-Base buildings.
+func (b *Building) Quest() map[string]any { return b.data.Quest }
+
 // BuildRobot queues n robots at the Base (direct Base command).
 func (b *Building) BuildRobot(n int) *Building {
 	b.city.acc.addCommand(b.ID, makeCommand(CmdBuildRobot, n))

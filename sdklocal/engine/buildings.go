@@ -40,6 +40,45 @@ func (m *Module) advanceProduction(tick int64) {
 	}
 }
 
+// advanceBaseQuest runs the Base's leveling (the game objective). It announces
+// the current quest once, then — while the Base store satisfies the current
+// quest — CONSUMES the required ore+metal and levels the Base up, emitting
+// base_level_up + quest_updated. The same store also pays robot production, so
+// quest goods and robots compete for it. (Mirror of buildings.go advanceBaseQuest.)
+func (m *Module) advanceBaseQuest(tick int64) {
+	b := m.wd.base()
+	if b == nil {
+		return
+	}
+	if b.level < 1 {
+		b.level = 1
+	}
+	// Announce the initial quest once per (re)start so a subscribed controller
+	// learns the goal even before the first level-up.
+	if !m.questAnnounced {
+		m.questAnnounced = true
+		reqOre, reqMetal := m.cfg.questFor(b.level)
+		m.emit(EventQuestUpdated, b.id, tick, map[string]any{"level": b.level, "requirements": map[string]any{"ore": reqOre, "metal": reqMetal}})
+		m.feedAdd(FeedEvent{Kind: EventQuestUpdated})
+	}
+	// Level up while the store can pay the current quest (loop so a big surplus
+	// can clear multiple levels in one tick; the requirement grows each level).
+	for {
+		reqOre, reqMetal := m.cfg.questFor(b.level)
+		if b.ore < reqOre || b.metal < reqMetal {
+			break
+		}
+		b.ore -= reqOre
+		b.metal -= reqMetal
+		b.level++
+		nextOre, nextMetal := m.cfg.questFor(b.level)
+		m.emit(EventBaseLevelUp, b.id, tick, map[string]any{"level": b.level, "quest": map[string]any{"ore": nextOre, "metal": nextMetal}})
+		m.feedAdd(FeedEvent{Kind: EventBaseLevelUp, Amount: b.level})
+		m.emit(EventQuestUpdated, b.id, tick, map[string]any{"level": b.level, "requirements": map[string]any{"ore": nextOre, "metal": nextMetal}})
+		m.feedAdd(FeedEvent{Kind: EventQuestUpdated})
+	}
+}
+
 // advanceMining runs autonomous extraction: every active Mining building drains
 // its bound spot into its own local store at MiningSpeed/tick. Deterministic order.
 func (m *Module) advanceMining(tick int64) {
