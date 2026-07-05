@@ -30,7 +30,7 @@ func TestHashCellParity(t *testing.T) {
 }
 
 // TestSeed7SpotField pins the seed-7 spot field in [-20,20] to the Python
-// reference (82 spots: 42 ore, 40 metal) — proves the same map is generated.
+// reference (43 spots: 26 ore, 17 metal (fewer, richer — balance change #3)) — proves the same map is generated.
 func TestSeed7SpotField(t *testing.T) {
 	wd := newWorld(DefaultConfig())
 	wd.generate("g", 7)
@@ -47,8 +47,8 @@ func TestSeed7SpotField(t *testing.T) {
 			}
 		}
 	}
-	if spots != 82 || ore != 42 || metal != 40 {
-		t.Fatalf("seed-7 spot field = %d spots (ore %d, metal %d), want 82 (42/40)", spots, ore, metal)
+	if spots != 43 || ore != 26 || metal != 17 {
+		t.Fatalf("seed-7 spot field = %d spots (ore %d, metal %d), want 43 (26/17)", spots, ore, metal)
 	}
 }
 

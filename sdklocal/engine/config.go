@@ -92,9 +92,9 @@ type Config struct {
 // DefaultConfig returns the provisional v1 tuning values (== Go DefaultConfig()).
 func DefaultConfig() Config {
 	return Config{
-		SpotDensity: 0.05,
-		SpotRichMin: 50,
-		SpotRichMax: 200,
+		SpotDensity: 0.025,
+		SpotRichMin: 150,
+		SpotRichMax: 600,
 
 		InitialReveal: 4,
 		MoveReveal:    5,
