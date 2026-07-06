@@ -179,7 +179,7 @@ func (b *Building) Storage() Storage {
 // Spot is the resource deposit under the building, if any.
 func (b *Building) Spot() *Spot { return b.data.Spot }
 
-// Production is the Base's robot-production status (raw attribute bag).
+// Production is a Flying Station's robot-production status (raw attribute bag).
 func (b *Building) Production() map[string]any { return b.data.Production }
 
 // Construction is the in-progress recipe on a constructing building (raw bag).
@@ -192,13 +192,17 @@ func (b *Building) Level() int { return b.data.Level }
 // Nil for non-Base buildings.
 func (b *Building) Quest() map[string]any { return b.data.Quest }
 
-// BuildRobot queues n robots at the Base (direct Base command).
+// BuildRobot queues n robots built at THIS Flying Station. The command targets
+// this building's id; the engine rejects a non-station target with a `blocked`
+// reason `not_a_station`. Each queued unit consumes the robot recipe from this
+// station's own production store and spawns at the station (empty, full energy).
 func (b *Building) BuildRobot(n int) *Building {
 	b.city.acc.addCommand(b.ID, makeCommand(CmdBuildRobot, n))
 	return b
 }
 
-// Cancel stops the Base's current production (direct Base command).
+// Cancel stops THIS Flying Station's production queue (an in-progress unit still
+// finishes).
 func (b *Building) Cancel() *Building {
 	b.city.acc.addCommand(b.ID, makeCommand(CmdBaseCancel))
 	return b

@@ -43,9 +43,11 @@ func TestBaseInitialQuestAnnouncedOnce(t *testing.T) {
 	}
 }
 
-// TestBaseLevelsUpAndConsumes checks a delivery clears the quest, consumes the
-// store, levels up, and can clear multiple levels in one tick.
-func TestBaseLevelsUpAndConsumes(t *testing.T) {
+// TestBaseLevelsUpAndResets checks a delivery clears the quest, RESETS the store
+// to 0, and levels up. Because the store resets (drops are capped at the
+// requirement), a forced surplus is discarded and the next level is NOT reached
+// in the same tick.
+func TestBaseLevelsUpAndResets(t *testing.T) {
 	m := New()
 	m.ResetWorld("t", 7)
 	b := m.wd.base()
@@ -55,7 +57,7 @@ func TestBaseLevelsUpAndConsumes(t *testing.T) {
 		t.Fatalf("level = %d, want 2", b.level)
 	}
 	if b.ore != 0 || b.metal != 0 {
-		t.Fatalf("store not consumed: ore=%d metal=%d", b.ore, b.metal)
+		t.Fatalf("store not reset: ore=%d metal=%d", b.ore, b.metal)
 	}
 	var lvlups int
 	for _, e := range evs {
@@ -75,14 +77,15 @@ func TestBaseLevelsUpAndConsumes(t *testing.T) {
 		t.Fatalf("base_level_up fired %d times, want 1", lvlups)
 	}
 
-	// A big surplus clears multiple levels in one tick: L2=60/30, L3=90/45.
+	// A forced surplus is DISCARDED on reset: 100/50 clears L1 (40/20) then the
+	// store resets to 0, so L2 (60/30) is not reached — only one level-up.
 	m2 := New()
 	m2.ResetWorld("t", 7)
 	b2 := m2.wd.base()
-	b2.ore, b2.metal = 100, 50 // clears L1 (40/20) then L2 (60/30) -> 0/0
+	b2.ore, b2.metal = 100, 50
 	m2.Advance(1)
-	if b2.level != 3 || b2.ore != 0 || b2.metal != 0 {
-		t.Fatalf("multi-level: level=%d ore=%d metal=%d, want 3/0/0", b2.level, b2.ore, b2.metal)
+	if b2.level != 2 || b2.ore != 0 || b2.metal != 0 {
+		t.Fatalf("reset-discards-surplus: level=%d ore=%d metal=%d, want 2/0/0", b2.level, b2.ore, b2.metal)
 	}
 }
 

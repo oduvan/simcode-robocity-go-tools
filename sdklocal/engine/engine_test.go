@@ -52,8 +52,9 @@ func TestSeed7SpotField(t *testing.T) {
 	}
 }
 
-// TestStartWorld checks the deterministic start: a Base at origin holding the
-// boot stock, and 2 idle robots that spawn EMPTY with a full battery.
+// TestStartWorld checks the deterministic start: an EMPTY Base (quest hub only)
+// at origin, a pre-placed Storage holding the boot capital, and 2 idle robots
+// that spawn EMPTY with a full battery.
 func TestStartWorld(t *testing.T) {
 	m := New()
 	m.ResetWorld("t", CanonicalSeed)
@@ -64,10 +65,21 @@ func TestStartWorld(t *testing.T) {
 	if b == nil || b.pos != [2]int{0, 0} {
 		t.Fatalf("base missing or not at origin: %+v", b)
 	}
-	// The boot stock now lives on the Base, not on the robots.
-	if b.ore != m.cfg.BaseStartOre || b.metal != m.cfg.BaseStartMetal {
-		t.Fatalf("base boot stock wrong: ore=%d metal=%d (want %d/%d)",
-			b.ore, b.metal, m.cfg.BaseStartOre, m.cfg.BaseStartMetal)
+	// The Base is the quest hub ONLY: no withdrawable store, empty, level 1.
+	if b.hasStorage || b.ore != 0 || b.metal != 0 {
+		t.Fatalf("base should hold no store: hasStorage=%v ore=%d metal=%d", b.hasStorage, b.ore, b.metal)
+	}
+	if b.level != 1 {
+		t.Fatalf("base level = %d, want 1", b.level)
+	}
+	// The boot capital lives in a pre-placed 2×2 Storage at anchor (2,0).
+	st := m.wd.buildingAt(2, 0)
+	if st == nil || st.typ != BuildingStorage || st.pos != [2]int{2, 0} {
+		t.Fatalf("pre-placed storage missing at (2,0): %+v", st)
+	}
+	if st.ore != m.cfg.StartCapitalOre || st.metal != m.cfg.StartCapitalMetal {
+		t.Fatalf("start capital wrong: ore=%d metal=%d (want %d/%d)",
+			st.ore, st.metal, m.cfg.StartCapitalOre, m.cfg.StartCapitalMetal)
 	}
 	for _, r := range m.wd.robots {
 		if r.energy != 100 || r.ore != 0 || r.metal != 0 {
@@ -206,35 +218,137 @@ func TestSelfCompletingConstruction(t *testing.T) {
 	}
 }
 
-// TestBaseProduction: queuing build_robot with a funded Base store produces a new
-// robot after RobotRecipe.BuildTicks ticks.
-func TestBaseProduction(t *testing.T) {
+// addStation drops an active Flying Station (with a production store) into the
+// world at pos, funded with ore/metal.
+func addStation(m *Module, pos [2]int, ore, metal int) *building {
+	wd := m.wd
+	wd.nextBuild++
+	b := &building{
+		id: BuildingFlyingStation + "-" + itoa(wd.nextBuild), typ: BuildingFlyingStation,
+		pos: pos, status: StatusActive, hasStorage: true, cap: m.cfg.StationStorageCap,
+		ore: ore, metal: metal,
+	}
+	wd.addBuilding(b)
+	return b
+}
+
+// TestStationProduction: queuing build_robot against a funded Flying Station
+// produces a new robot AT the station (empty, full energy) after
+// RobotRecipe.BuildTicks ticks, consuming the station's OWN store.
+func TestStationProduction(t *testing.T) {
 	m := New()
 	m.ResetWorld("t", CanonicalSeed)
-	b := m.wd.base()
-	b.ore = m.cfg.RobotRecipe.Ore
-	b.metal = m.cfg.RobotRecipe.Metal
+	st := addStation(m, [2]int{5, 0}, m.cfg.RobotRecipe.Ore, m.cfg.RobotRecipe.Metal)
 	before := len(m.wd.robots)
 
-	m.Submit(Intent{Robot: "", Commands: []Command{{Cmd: CmdBuildRobot, Args: []any{1}}}}, 1)
+	m.Submit(Intent{Robot: st.id, Commands: []Command{{Cmd: CmdBuildRobot, Args: []any{1}}}}, 1)
+	if st.prodQueue != 1 {
+		t.Fatalf("station queue = %d, want 1", st.prodQueue)
+	}
 
-	producedAt := int64(0)
+	var produced string
 	for tk := int64(2); tk <= int64(m.cfg.RobotRecipe.BuildTicks)+5; tk++ {
-		evs := m.Advance(tk)
-		for _, e := range evs {
+		for _, e := range m.Advance(tk) {
 			if e.Event == EventRobotProduced {
-				producedAt = tk
+				produced = e.Robot
 			}
 		}
 	}
-	if producedAt == 0 {
-		t.Fatal("base never produced a robot")
+	if produced == "" {
+		t.Fatal("station never produced a robot")
 	}
 	if len(m.wd.robots) != before+1 {
 		t.Fatalf("robot count = %d, want %d", len(m.wd.robots), before+1)
 	}
-	if b.ore != 0 || b.metal != 0 {
-		t.Fatalf("base store not consumed: ore=%d metal=%d", b.ore, b.metal)
+	if st.ore != 0 || st.metal != 0 {
+		t.Fatalf("station store not consumed: ore=%d metal=%d", st.ore, st.metal)
+	}
+	nr := m.wd.robots[produced]
+	if nr.pos != [2]float64{5, 0} || nr.ore != 0 || nr.metal != 0 || nr.energy != m.cfg.EnergyCap {
+		t.Fatalf("produced robot wrong: pos=%v ore=%d metal=%d energy=%v", nr.pos, nr.ore, nr.metal, nr.energy)
+	}
+}
+
+// TestBuildRobotOnNonStationBlocked: build_robot targeting a non-station (the
+// Base) is rejected with `not_a_station` and queues nothing.
+func TestBuildRobotOnNonStationBlocked(t *testing.T) {
+	m := New()
+	m.ResetWorld("t", CanonicalSeed)
+	b := m.wd.base()
+	evs := m.Submit(Intent{Robot: b.id, Commands: []Command{{Cmd: CmdBuildRobot, Args: []any{1}}}}, 1)
+	var blocked bool
+	for _, e := range evs {
+		if e.Event == EventBlocked {
+			var p struct{ Reason string `json:"reason"` }
+			_ = json.Unmarshal(e.Payload, &p)
+			if p.Reason == "not_a_station" {
+				blocked = true
+			}
+		}
+	}
+	if !blocked {
+		t.Fatal("build_robot on the Base should be blocked not_a_station")
+	}
+	if b.prodQueue != 0 {
+		t.Fatalf("base queue = %d, want 0", b.prodQueue)
+	}
+}
+
+// TestDropAtBaseCapsAtRequirement: a drop at the Base accepts each resource only
+// up to the current quest requirement; the remainder stays in the robot.
+func TestDropAtBaseCapsAtRequirement(t *testing.T) {
+	m := New()
+	m.ResetWorld("t", CanonicalSeed)
+	b := m.wd.base() // level 1 -> quest 40/20
+	var r *robot
+	for _, rr := range m.wd.robots {
+		r = rr
+		break
+	}
+	r.pos = [2]float64{0, 0} // stand on the Base
+	r.ore, r.metal = 50, 25
+	m.Submit(Intent{Robot: r.id, Commands: []Command{{Cmd: CmdDrop}}}, 1)
+	if b.ore != 40 || b.metal != 20 {
+		t.Fatalf("base accepted %d/%d, want capped 40/20", b.ore, b.metal)
+	}
+	if r.ore != 10 || r.metal != 5 {
+		t.Fatalf("robot remainder %d/%d, want 10/5", r.ore, r.metal)
+	}
+}
+
+// TestStationStoreDropAndPickupReserved: a drop at a Flying Station feeds its
+// production store; pick_up from it is blocked `station_reserved`.
+func TestStationStoreDropAndPickupReserved(t *testing.T) {
+	m := New()
+	m.ResetWorld("t", CanonicalSeed)
+	st := addStation(m, [2]int{5, 0}, 0, 0)
+	var r *robot
+	for _, rr := range m.wd.robots {
+		r = rr
+		break
+	}
+	r.pos = [2]float64{5, 0}
+	r.ore, r.metal = 6, 3
+	m.Submit(Intent{Robot: r.id, Commands: []Command{{Cmd: CmdDrop}}}, 1)
+	if st.ore != 6 || st.metal != 3 || r.ore != 0 || r.metal != 0 {
+		t.Fatalf("drop-to-station: station=%d/%d robot=%d/%d", st.ore, st.metal, r.ore, r.metal)
+	}
+	evs := m.Submit(Intent{Robot: r.id, Commands: []Command{{Cmd: CmdPickUp}}}, 2)
+	var reserved bool
+	for _, e := range evs {
+		if e.Event == EventBlocked {
+			var p struct{ Reason string `json:"reason"` }
+			_ = json.Unmarshal(e.Payload, &p)
+			if p.Reason == "station_reserved" {
+				reserved = true
+			}
+		}
+	}
+	if !reserved {
+		t.Fatal("pick_up from a station should be blocked station_reserved")
+	}
+	if st.ore != 6 || st.metal != 3 {
+		t.Fatalf("station store changed on blocked pick_up: %d/%d", st.ore, st.metal)
 	}
 }
 

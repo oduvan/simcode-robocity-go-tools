@@ -40,9 +40,12 @@ type pConfig struct {
 	StartMetal          int     `json:"start_metal"`
 	ProducedOre         int     `json:"produced_ore"`
 	ProducedMetal       int     `json:"produced_metal"`
+	StartCapitalOre     int     `json:"start_capital_ore"`
+	StartCapitalMetal   int     `json:"start_capital_metal"`
 	MiningSpeed         int     `json:"mining_speed"`
 	MiningStorageCap    int     `json:"mining_storage_cap"`
 	StorageCap          int     `json:"storage_cap"`
+	StationStorageCap   int     `json:"station_storage_cap"`
 	BaseStorageCap      int     `json:"base_storage_cap"`
 	IdleResendTicks     int     `json:"idle_resend_ticks"`
 	QuestBaseOre        int     `json:"quest_base_ore"`
@@ -155,8 +158,9 @@ func buildParityFromEngine(fx pFixture) pFixture {
 			FlySpeed: cfg.FlySpeed, EnergyCap: cfg.EnergyCap, EnergyPerDistance: cfg.EnergyPerDistance, ChargeRate: cfg.ChargeRate,
 			CarryCapacity: cfg.CarryCapacity, NumStartRobots: cfg.NumStartRobots,
 			StartOre: cfg.StartOre, StartMetal: cfg.StartMetal, ProducedOre: cfg.ProducedOre, ProducedMetal: cfg.ProducedMetal,
+			StartCapitalOre: cfg.StartCapitalOre, StartCapitalMetal: cfg.StartCapitalMetal,
 			MiningSpeed: cfg.MiningSpeed, MiningStorageCap: cfg.MiningStorageCap,
-			StorageCap: cfg.StorageCap, BaseStorageCap: cfg.BaseStorageCap, IdleResendTicks: cfg.IdleResendTicks,
+			StorageCap: cfg.StorageCap, StationStorageCap: cfg.StationStorageCap, BaseStorageCap: cfg.BaseStorageCap, IdleResendTicks: cfg.IdleResendTicks,
 			QuestBaseOre: cfg.QuestBaseOre, QuestBaseMetal: cfg.QuestBaseMetal,
 			QuestGrowthNum: cfg.QuestGrowthNum, QuestGrowthDen: cfg.QuestGrowthDen,
 			MiningRecipe: rec(BuildingMining), StorageRecipe: rec(BuildingStorage),

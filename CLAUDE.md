@@ -61,7 +61,7 @@ tick loop for you instead of talking to Redis.
 - `robots destroyed` should be **0** — a non-zero count means a robot ran its
   battery dry mid-flight (recharge earlier / fly shorter hops).
 - `ore.mined` / `metal.mined` climbing and `buildings_by_type` growing (mining,
-  storage, flying_station, more base-produced robots) means the city is actually
+  storage, flying_station, more station-produced robots) means the city is actually
   developing, not just exploring. The shipped starter only explores, so a fresh
   run of it shows `mined: 0` and `buildings: base=1` — beat that. See
   `examples/mine` for a controller that mines and hauls.
@@ -135,7 +135,7 @@ robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOK
     `--json` output.
   - `engine/` — the ported rules engine: `world.go` (`hashCell`, endless lazy gen),
     `commands.go`/`buildings.go`/`module.go` (Submit/Advance, autonomous
-    mining/construction, Base production, events), `state.go` (the state.* snapshot
+    mining/construction, Flying Station robot production, Base quest leveling, events), `state.go` (the state.* snapshot
     the SDK reads), `live.go` (`--from-live` seeding). Pure, deterministic, no Redis.
 - `cmd/robocity-sim/` — the CLI: materializes the embedded SDK, writes the temp
   `go.work`, runs `go run` on the user's project, streams output. `--from-live`
@@ -155,7 +155,7 @@ Per the platform's Docker-only rule (image `golang:1.23-alpine`):
 
 ```bash
 # Unit + integration tests (engine parity, determinism, flight/energy/destruction,
-# autonomous mining, self-completing construction, Base production, SDK loop,
+# autonomous mining, self-completing construction, Flying Station robot production, SDK loop,
 # CLI materialize/workspace):
 docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
 

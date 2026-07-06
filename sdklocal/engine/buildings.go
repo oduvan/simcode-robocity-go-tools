@@ -1,50 +1,56 @@
 package engine
 
-// advanceProduction runs the Base's robot factory.
-func (m *Module) advanceProduction(tick int64) {
+// advanceStationProduction runs every Flying Station's robot factory. Each active
+// station with a queue starts a unit when its OWN production store can pay
+// RobotRecipe, accumulates build time, and on finish spawns a robot AT the station
+// (empty inventory, full energy). Deterministic buildOrd order. (Mirror of
+// buildings.go advanceStationProduction.)
+func (m *Module) advanceStationProduction(tick int64) {
 	wd := m.wd
-	b := wd.base()
-	if b == nil {
-		return
-	}
-	if !b.prodActive && b.prodQueue > 0 {
-		if b.ore >= m.cfg.RobotRecipe.Ore && b.metal >= m.cfg.RobotRecipe.Metal {
-			b.ore -= m.cfg.RobotRecipe.Ore
-			b.metal -= m.cfg.RobotRecipe.Metal
-			b.prodActive = true
-			b.prodProgress = 0
+	for _, id := range wd.buildOrd {
+		b := wd.buildings[id]
+		if b == nil || b.typ != BuildingFlyingStation || b.status != StatusActive {
+			continue
 		}
-	}
-	if b.prodActive {
-		b.prodProgress++
-		if b.prodProgress >= m.cfg.RobotRecipe.BuildTicks {
-			pos := wd.freeAdjacent(b.pos[0], b.pos[1])
-			wd.nextRobot++
-			id := "r" + itoa(wd.nextRobot)
-			nr := &robot{
-				id: id, typ: "builder", pos: [2]float64{float64(pos[0]), float64(pos[1])}, face: "S",
-				cap: m.cfg.CarryCapacity, state: StateIdle, energy: m.cfg.EnergyCap,
-				ore: m.cfg.ProducedOre, metal: m.cfg.ProducedMetal,
+		if !b.prodActive && b.prodQueue > 0 {
+			if b.ore >= m.cfg.RobotRecipe.Ore && b.metal >= m.cfg.RobotRecipe.Metal {
+				b.ore -= m.cfg.RobotRecipe.Ore
+				b.metal -= m.cfg.RobotRecipe.Metal
+				b.prodActive = true
+				b.prodProgress = 0
 			}
-			wd.addRobot(nr)
-			wd.reveal(pos[0], pos[1], m.cfg.InitialReveal)
-			b.prodActive = false
-			b.prodProgress = 0
-			if b.prodQueue > 0 {
-				b.prodQueue--
+		}
+		if b.prodActive {
+			b.prodProgress++
+			if b.prodProgress >= m.cfg.RobotRecipe.BuildTicks {
+				wd.nextRobot++
+				rid := "r" + itoa(wd.nextRobot)
+				// Spawns AT the station, empty (it already paid to build it).
+				nr := &robot{
+					id: rid, typ: "builder", pos: [2]float64{float64(b.pos[0]), float64(b.pos[1])}, face: "S",
+					cap: m.cfg.CarryCapacity, state: StateIdle, energy: m.cfg.EnergyCap,
+				}
+				wd.addRobot(nr)
+				wd.reveal(b.pos[0], b.pos[1], m.cfg.InitialReveal)
+				b.prodActive = false
+				b.prodProgress = 0
+				if b.prodQueue > 0 {
+					b.prodQueue--
+				}
+				m.emit(EventRobotProduced, rid, tick, map[string]any{"robot_id": rid})
+				m.feedAdd(FeedEvent{Kind: EventRobotProduced, Robot: rid})
+				m.emit(EventSpawn, rid, tick, nil)
 			}
-			m.emit(EventRobotProduced, id, tick, map[string]any{"robot_id": id})
-			m.feedAdd(FeedEvent{Kind: EventRobotProduced, Robot: id})
-			m.emit(EventSpawn, id, tick, nil)
 		}
 	}
 }
 
 // advanceBaseQuest runs the Base's leveling (the game objective). It announces
-// the current quest once, then — while the Base store satisfies the current
-// quest — CONSUMES the required ore+metal and levels the Base up, emitting
-// base_level_up + quest_updated. The same store also pays robot production, so
-// quest goods and robots compete for it. (Mirror of buildings.go advanceBaseQuest.)
+// the current quest once, then — while the Base quest store satisfies the current
+// quest — RESETS the store to 0 and levels the Base up, emitting base_level_up +
+// quest_updated. Drops into the Base are capped per-resource at the requirement,
+// so a met quest holds exactly the requirement and the reset consumes it. (Mirror
+// of buildings.go advanceBaseQuest.)
 func (m *Module) advanceBaseQuest(tick int64) {
 	b := m.wd.base()
 	if b == nil {
@@ -61,15 +67,15 @@ func (m *Module) advanceBaseQuest(tick int64) {
 		m.emit(EventQuestUpdated, b.id, tick, map[string]any{"level": b.level, "requirements": map[string]any{"ore": reqOre, "metal": reqMetal}})
 		m.feedAdd(FeedEvent{Kind: EventQuestUpdated})
 	}
-	// Level up while the store can pay the current quest (loop so a big surplus
-	// can clear multiple levels in one tick; the requirement grows each level).
+	// Level up while the store can pay the current quest (drops are capped at the
+	// requirement, so the store never exceeds it): reset to 0, not subtract.
 	for {
 		reqOre, reqMetal := m.cfg.questFor(b.level)
 		if b.ore < reqOre || b.metal < reqMetal {
 			break
 		}
-		b.ore -= reqOre
-		b.metal -= reqMetal
+		b.ore = 0
+		b.metal = 0
 		b.level++
 		nextOre, nextMetal := m.cfg.questFor(b.level)
 		m.emit(EventBaseLevelUp, b.id, tick, map[string]any{"level": b.level, "quest": map[string]any{"ore": nextOre, "metal": nextMetal}})
@@ -162,7 +168,10 @@ func (m *Module) completeConstruction(plat *building, tick int64) {
 		nb.hasStorage = true
 		nb.cap = m.cfg.StorageCap
 	case BuildingFlyingStation:
-		// no storage — robots land here and charge via the `charge` command.
+		// A production store: robots drop ore/metal here to fuel robot building,
+		// and land here to charge via the `charge` command.
+		nb.hasStorage = true
+		nb.cap = m.cfg.StationStorageCap
 	}
 
 	wd.removeBuilding(plat.id)

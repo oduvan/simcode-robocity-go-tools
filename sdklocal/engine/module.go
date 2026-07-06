@@ -80,10 +80,10 @@ func (m *Module) Advance(tick int64) []Event {
 	}
 	wd.pendingSpawn = nil
 
-	m.advanceProduction(tick)
-	// Base quests / leveling (the objective): consume-and-level-up when the store
-	// satisfies the current quest. Runs after production so both compete for the
-	// same reserved store.
+	// Flying Station robot production (each station consumes its own store).
+	m.advanceStationProduction(tick)
+	// Base quests / leveling (the objective): reset-and-level-up when the Base's
+	// quest store satisfies the current quest.
 	m.advanceBaseQuest(tick)
 	m.advanceMining(tick)
 
@@ -130,15 +130,22 @@ func (m *Module) Submit(in Intent, tick int64) []Event {
 	for _, c := range in.Commands {
 		switch c.Cmd {
 		case CmdBuildRobot:
-			if b := wd.base(); b != nil {
-				n := argInt(c.Args, 0, 1)
-				if n < 1 {
-					n = 1
-				}
-				b.prodQueue += n
+			// Station-scoped: the intent targets a Flying Station by building id
+			// (in.Robot). Queue N robots against THAT station's production store.
+			b := wd.buildings[in.Robot]
+			if b == nil || b.typ != BuildingFlyingStation || b.status != StatusActive {
+				m.emit(EventBlocked, "", tick, map[string]any{"reason": "not_a_station"})
+				m.feedAdd(FeedEvent{Kind: EventBlocked})
+				break
 			}
+			n := argInt(c.Args, 0, 1)
+			if n < 1 {
+				n = 1
+			}
+			b.prodQueue += n
 		case CmdBaseCancel:
-			if b := wd.base(); b != nil {
+			// Cancel a Flying Station's production queue (in-progress unit finishes).
+			if b := wd.buildings[in.Robot]; b != nil && b.typ == BuildingFlyingStation {
 				b.prodQueue = 0
 			}
 		case CmdBuild:

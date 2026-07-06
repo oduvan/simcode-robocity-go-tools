@@ -113,7 +113,7 @@ Everything the reference module does, ported faithfully and deterministically:
   destruction mid-flight when the battery hits 0, recharge on a Flying Station /
   the Base),
 - **autonomous mining** into capped storage, **self-completing** construction
-  sites (`World().Build`), and **Base robot production**,
+  sites (`World().Build`), and **Flying Station robot production**,
 - the full event set (`spawn`, `idle`, `arrived`, `blocked`, `construction_*`,
   `resource_delivered`, `spot_depleted`, `storage_full`, `inventory_full`,
   `robot_produced`, `robot_destroyed`, `charge_complete`, `message`,

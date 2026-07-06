@@ -33,7 +33,9 @@ func (m *Module) buildingForm(b *building) map[string]any {
 			bf["spot"] = map[string]any{"resource": cl.spot.resource, "remaining": cl.spot.remaining}
 		}
 	}
-	if b.typ == BuildingBase {
+	if b.typ == BuildingFlyingStation {
+		// Robot production lives on the Flying Station (store form comes from
+		// hasStorage above). Progress is 0..1 over the recipe's build time.
 		denom := m.cfg.RobotRecipe.BuildTicks
 		if denom < 1 {
 			denom = 1
@@ -43,8 +45,11 @@ func (m *Module) buildingForm(b *building) map[string]any {
 			"progress": float64(b.prodProgress) / float64(denom),
 			"queued":   b.prodQueue,
 		}
+	}
+	if b.typ == BuildingBase {
 		// Leveling: the Base's current level + quest (required vs progress). This
-		// is the game objective; only the Base carries it.
+		// is the game objective; only the Base carries it. No production / no
+		// general storage form (hasStorage is false).
 		lvl := b.level
 		if lvl < 1 {
 			lvl = 1

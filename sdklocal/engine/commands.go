@@ -233,10 +233,32 @@ func (m *Module) doDrop(r *robot, tick int64) {
 		return
 	}
 
+	if b.typ == BuildingBase {
+		// The Base is the quest accumulator: accept each resource only up to the
+		// current quest requirement; the un-accepted remainder STAYS in the robot.
+		// The Base holds no withdrawable store (pick_up is blocked).
+		lvl := b.level
+		if lvl < 1 {
+			lvl = 1
+		}
+		reqOre, reqMetal := m.cfg.questFor(lvl)
+		takeOre := max0(minInt(ore, reqOre-b.ore))
+		takeMetal := max0(minInt(metal, reqMetal-b.metal))
+		b.ore += takeOre
+		b.metal += takeMetal
+		r.ore -= takeOre
+		r.metal -= takeMetal
+		m.emit(EventResourceDelivered, r.id, tick, map[string]any{"building_id": b.id, "ore": takeOre, "metal": takeMetal})
+		m.feedAdd(FeedEvent{Kind: EventResourceDelivered, Robot: r.id})
+		r.state = StateIdle
+		return
+	}
+
 	if !b.hasStorage {
 		m.blocked(r, tick, "no_storage")
 		return
 	}
+	// Storage building OR a Flying Station's production store: capped at b.cap.
 	room := b.cap - (b.ore + b.metal)
 	takeOre := minInt(ore, room)
 	room -= takeOre
@@ -254,7 +276,9 @@ func (m *Module) doDrop(r *robot, tick int64) {
 	r.state = StateIdle
 }
 
-// doPickUp grabs resources from the building on the robot's cell (not the Base).
+// doPickUp grabs resources from the building on the robot's cell. Mining/Storage
+// are haulable; the Base (quest accumulator) and Flying Stations (production
+// store) are reserved and blocked.
 func (m *Module) doPickUp(r *robot, tick int64) {
 	c := r.cellF()
 	b := m.wd.buildingAt(c[0], c[1])
@@ -263,7 +287,11 @@ func (m *Module) doPickUp(r *robot, tick int64) {
 		return
 	}
 	if b.typ == BuildingBase {
-		m.blocked(r, tick, "base_reserved")
+		m.blocked(r, tick, "base_reserved") // quest accumulator only
+		return
+	}
+	if b.typ == BuildingFlyingStation {
+		m.blocked(r, tick, "station_reserved") // production store only
 		return
 	}
 	if !b.hasStorage {

@@ -143,14 +143,31 @@ func (wd *world) generate(city string, seed int64) {
 	wd.city = city
 	wd.seed = seed
 
+	// The Base occupies the origin. It is the quest hub ONLY: no general/
+	// withdrawable store (hasStorage stays false) — its ore/metal are the quest
+	// accumulator, capped per-resource at questFor(level). It still doubles as a
+	// charging pad (see stationAt) and no longer builds robots.
 	base := &building{
 		id: "base-1", typ: BuildingBase, pos: [2]int{0, 0},
-		status: StatusActive, hasStorage: true, cap: wd.cfg.BaseStorageCap,
-		ore: wd.cfg.BaseStartOre, metal: wd.cfg.BaseStartMetal, // the boot stock
-		level: 1, // the objective starts at level 1 (quest derived via questFor)
+		status: StatusActive,
+		level:  1, // the objective starts at level 1 (quest derived via questFor)
 	}
 	wd.cellAt(0, 0).spot = nil
 	wd.addBuilding(base)
+
+	// The boot capital lives in a Storage pre-placed next to the Base (anchor
+	// (2,0), footprint 2×2 → covers (2,0),(3,0),(2,1),(3,1) — clear of the Base
+	// cell and the starting robots' ring, within the initial reveal radius).
+	// Robots pick_up from it to bootstrap the first mines.
+	sw, sh := wd.cfg.footprint(BuildingStorage)
+	wd.nextBuild++
+	storage := &building{
+		id: BuildingStorage + "-" + itoa(wd.nextBuild), typ: BuildingStorage,
+		pos: [2]int{2, 0}, w: sw, h: sh, status: StatusActive,
+		hasStorage: true, cap: wd.cfg.StorageCap,
+		ore: wd.cfg.StartCapitalOre, metal: wd.cfg.StartCapitalMetal,
+	}
+	wd.addBuilding(storage)
 
 	num := wd.cfg.NumStartRobots
 	if num < 1 {

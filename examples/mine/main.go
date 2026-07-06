@@ -1,8 +1,8 @@
 // A small mining controller (Go) — the counterpart of the Python examples/
-// mine_main.py. It exercises the build -> autonomous-mine -> haul -> Base-
-// production path end to end, so `robocity-sim run examples/mine` shows a city
-// that actually develops (buildings > 1, ore/metal mined climbing) rather than
-// only exploring. It is deliberately simple, not an optimal city.
+// mine_main.py. It exercises the build -> autonomous-mine -> haul -> Base-quest
+// path end to end, so `robocity-sim run examples/mine` shows a city that actually
+// develops (buildings > 1, ore/metal mined climbing) rather than only exploring.
+// It is deliberately simple, not an optimal city.
 package main
 
 import (
@@ -56,13 +56,10 @@ func main() {
 			}
 		}
 
-		// At the Base carrying ore -> drop it into the store (feeds robot production).
+		// At the Base carrying ore -> drop it in (the Base is the quest accumulator;
+		// it accepts up to the current quest requirement and levels up when met).
 		if atBase && inv.Ore > 0 {
 			r.Drop()
-			// Once the Base has enough, grow the fleet.
-			if base.Storage().Ore >= 12 && base.Storage().Metal >= 6 {
-				base.BuildRobot(1)
-			}
 			return
 		}
 

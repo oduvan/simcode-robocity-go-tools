@@ -1,7 +1,7 @@
 // Package engine is a standalone, in-process port of the SimCode Robot City
 // Builder server engine (game/modules/robot_city in the platform repo). It owns
 // the 2D endless world, validates+times robot commands, runs autonomous mining /
-// self-completing construction / Base robot production, and emits the full event
+// self-completing construction / Flying Station robot production, and emits the full event
 // set + the state.* snapshot the SDK read model consumes.
 //
 // It is DECOUPLED from the platform: no Redis, no ports, no
@@ -73,17 +73,26 @@ type Config struct {
 	NumStartRobots int
 	StartOre       int // each starting robot's inventory kit (0 = spawn empty)
 	StartMetal     int
-	ProducedOre    int
-	ProducedMetal  int
-	BaseStartOre   int // ore the Base's store holds at world start (the boot stock)
-	BaseStartMetal int // metal the Base's store holds at world start
+	// ProducedOre/ProducedMetal are RETAINED but currently UNUSED: a
+	// station-produced robot now spawns EMPTY. Kept so the kit can be
+	// reintroduced without a config/parity-schema change.
+	ProducedOre   int
+	ProducedMetal int
+
+	// Starting capital: the boot stock lives in a pre-placed Storage next to the
+	// Base at world start (the Base itself no longer seeds a store).
+	StartCapitalOre   int
+	StartCapitalMetal int
 
 	// Mining (autonomous).
 	MiningSpeed      int
 	MiningStorageCap int
 
-	// Storage / Base caps.
-	StorageCap     int
+	// Storage caps.
+	StorageCap        int
+	StationStorageCap int // a Flying Station's robot-production store cap
+	// BaseStorageCap is RETAINED but currently UNUSED: the Base's store is the
+	// quest accumulator, capped PER-RESOURCE at questFor(level), not by this value.
 	BaseStorageCap int
 
 	// Reliability.
@@ -91,8 +100,9 @@ type Config struct {
 
 	// Base quests (the game objective). The Base starts at level 1; each level
 	// poses a quest = a required amount of raw ore+metal that must accumulate in
-	// the Base's store. When held, the amount is CONSUMED and the Base levels up
-	// to the next, harder quest. questFor(level) escalates the requirement
+	// the Base's quest store (drops are capped per-resource at the requirement).
+	// When both are met, the store RESETS to 0 and the Base levels up to the
+	// next, harder quest. questFor(level) escalates the requirement
 	// geometrically from the base amounts by QuestGrowthNum/QuestGrowthDen per
 	// level. (Mirror of config.go.)
 	QuestBaseOre   int
@@ -107,7 +117,7 @@ type Config struct {
 	// footprint). Storage is a 2×2 hub; base/mining/flying_station stay 1×1.
 	Footprints map[string]Footprint
 
-	// Robot production at the Base (consumes the Base's reserved store).
+	// Robot production at a Flying Station (consumes that station's own store).
 	RobotRecipe Recipe
 }
 
@@ -157,18 +167,20 @@ func DefaultConfig() Config {
 
 		CarryCapacity:  10,
 		NumStartRobots: 2,
-		StartOre:       0, // robots spawn EMPTY — the boot stock lives on the Base now
+		StartOre:       0, // robots spawn EMPTY — the boot stock lives in a Storage now
 		StartMetal:     0,
-		ProducedOre:    6,
+		ProducedOre:    6, // retained, currently unused (produced robots spawn empty)
 		ProducedMetal:  3,
-		BaseStartOre:   30,
-		BaseStartMetal: 15,
+		// Boot capital: a Storage pre-placed next to the Base holds this at start.
+		StartCapitalOre:   30,
+		StartCapitalMetal: 15,
 
 		MiningSpeed:      1,
 		MiningStorageCap: 12,
 
-		StorageCap:     500,
-		BaseStorageCap: 200,
+		StorageCap:        500,
+		StationStorageCap: 200, // a Flying Station's production store (~16 robots)
+		BaseStorageCap:    200, // retained, currently unused
 
 		IdleResendTicks: 3,
 
