@@ -122,6 +122,18 @@ func (c *City) Base() *Building {
 	return nil
 }
 
+// Stations returns all Flying Station buildings (each carries BuildRobot /
+// CancelProduction plus its production + storage). Robots are built at stations.
+func (c *City) Stations() []*Building {
+	out := make([]*Building, 0)
+	for id, b := range c.snap.buildings {
+		if b.Type == BuildingFlyingStation {
+			out = append(out, &Building{ID: id, city: c, data: c.snap.buildings[id]})
+		}
+	}
+	return out
+}
+
 // World returns a fresh read of the world header + revealed cells.
 func (c *City) World() World { return World{snap: c.snap, city: c} }
 
