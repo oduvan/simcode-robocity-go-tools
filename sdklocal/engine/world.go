@@ -146,6 +146,7 @@ func (wd *world) generate(city string, seed int64) {
 	base := &building{
 		id: "base-1", typ: BuildingBase, pos: [2]int{0, 0},
 		status: StatusActive, hasStorage: true, cap: wd.cfg.BaseStorageCap,
+		ore: wd.cfg.BaseStartOre, metal: wd.cfg.BaseStartMetal, // the boot stock
 		level: 1, // the objective starts at level 1 (quest derived via questFor)
 	}
 	wd.cellAt(0, 0).spot = nil

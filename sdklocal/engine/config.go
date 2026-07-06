@@ -71,10 +71,12 @@ type Config struct {
 	// Robots.
 	CarryCapacity  int
 	NumStartRobots int
-	StartOre       int
+	StartOre       int // each starting robot's inventory kit (0 = spawn empty)
 	StartMetal     int
 	ProducedOre    int
 	ProducedMetal  int
+	BaseStartOre   int // ore the Base's store holds at world start (the boot stock)
+	BaseStartMetal int // metal the Base's store holds at world start
 
 	// Mining (autonomous).
 	MiningSpeed      int
@@ -155,10 +157,12 @@ func DefaultConfig() Config {
 
 		CarryCapacity:  10,
 		NumStartRobots: 2,
-		StartOre:       6,
-		StartMetal:     3,
+		StartOre:       0, // robots spawn EMPTY — the boot stock lives on the Base now
+		StartMetal:     0,
 		ProducedOre:    6,
 		ProducedMetal:  3,
+		BaseStartOre:   30,
+		BaseStartMetal: 15,
 
 		MiningSpeed:      1,
 		MiningStorageCap: 12,

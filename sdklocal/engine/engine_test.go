@@ -52,20 +52,26 @@ func TestSeed7SpotField(t *testing.T) {
 	}
 }
 
-// TestStartWorld checks the deterministic start: a Base at origin, 2 idle robots
-// each carrying the boot kit with a full battery.
+// TestStartWorld checks the deterministic start: a Base at origin holding the
+// boot stock, and 2 idle robots that spawn EMPTY with a full battery.
 func TestStartWorld(t *testing.T) {
 	m := New()
 	m.ResetWorld("t", CanonicalSeed)
 	if len(m.wd.robots) != 2 {
 		t.Fatalf("want 2 start robots, got %d", len(m.wd.robots))
 	}
-	if b := m.wd.base(); b == nil || b.pos != [2]int{0, 0} {
+	b := m.wd.base()
+	if b == nil || b.pos != [2]int{0, 0} {
 		t.Fatalf("base missing or not at origin: %+v", b)
 	}
+	// The boot stock now lives on the Base, not on the robots.
+	if b.ore != m.cfg.BaseStartOre || b.metal != m.cfg.BaseStartMetal {
+		t.Fatalf("base boot stock wrong: ore=%d metal=%d (want %d/%d)",
+			b.ore, b.metal, m.cfg.BaseStartOre, m.cfg.BaseStartMetal)
+	}
 	for _, r := range m.wd.robots {
-		if r.energy != 100 || r.ore != 6 || r.metal != 3 {
-			t.Fatalf("robot %s kit wrong: energy=%v ore=%d metal=%d", r.id, r.energy, r.ore, r.metal)
+		if r.energy != 100 || r.ore != 0 || r.metal != 0 {
+			t.Fatalf("robot %s should spawn empty: energy=%v ore=%d metal=%d", r.id, r.energy, r.ore, r.metal)
 		}
 	}
 }
