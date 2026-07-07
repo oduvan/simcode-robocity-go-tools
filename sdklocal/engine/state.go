@@ -186,6 +186,8 @@ func (m *Module) StateJSON(tick, seq int64) map[string]string {
 		"stats":      marshal(m.statsMap()),
 		// Game-agnostic goal summary (Base level + next quest) — the shell topbar.
 		"objective": marshal(m.objective()),
+		// Game-agnostic 0..1 goal completion — the shell renders it as a bar.
+		"objective_progress": marshal(m.objectiveProgress()),
 	}
 }
 

@@ -48,6 +48,36 @@ func (m *Module) objective() string {
 	return "⭐ Base level " + itoa(lvl) + " — next: " + itoa(ore) + " ore + " + itoa(metal) + " metal"
 }
 
+// objectiveProgress returns the current quest's completion as a 0..1 fraction:
+// (min(baseOre, reqOre) + min(baseMetal, reqMetal)) / (reqOre + reqMetal), using
+// the Base's held ore/metal. 0 when there is no Base or the quest requires
+// nothing. Game-agnostic — the shell renders it as a progress bar. (Mirror of
+// module.go objectiveProgress.)
+func (m *Module) objectiveProgress() float64 {
+	b := m.wd.base()
+	if b == nil {
+		return 0
+	}
+	lvl := b.level
+	if lvl < 1 {
+		lvl = 1
+	}
+	reqOre, reqMetal := m.cfg.questFor(lvl)
+	total := reqOre + reqMetal
+	if total <= 0 {
+		return 0
+	}
+	got := minInt(b.ore, reqOre) + minInt(b.metal, reqMetal)
+	p := float64(got) / float64(total)
+	if p < 0 {
+		return 0
+	}
+	if p > 1 {
+		return 1
+	}
+	return p
+}
+
 func (m *Module) emit(name, robot string, tick int64, payload any) {
 	m.evbuf = append(m.evbuf, ev(name, robot, tick, payload))
 }
