@@ -1,5 +1,18 @@
 # simcode-robocity-go-tools
 
+> ## ⚠️ DEPRECATED — superseded by the real shared engine
+>
+> Local testing no longer uses this re-implementation. The `simcode` Go SDK now drives
+> your controller against the **real** game engine (the same stateless tick the server
+> runs) via its local mode behind the `simcode_local` build tag. A polished one-command
+> Go runner (`robocity-sim`) is still being packaged; in the meantime the fastest
+> real-engine check is the Python local runner (`python -m simcode.local`, the engine
+> and rules are identical).
+>
+> Because local testing now runs the actual engine (not a port), there is **no parity
+> to maintain**, and this repo is **no longer kept in sync** with the server engine —
+> its results may drift. The code is left here for reference.
+
 A **local, offline simulator** for the SimCode **Robot City Builder** game, for
 city controllers written in **Go**. It lets you test your `main.go` on your
 machine — **no GitHub push, no Redis, no server** — and see what your robots
