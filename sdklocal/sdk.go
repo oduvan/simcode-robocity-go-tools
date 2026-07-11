@@ -18,8 +18,7 @@ type Handler func(Event)
 
 // City is the user-facing entry point: register handlers with On, then Run.
 type City struct {
-	id  string
-	eng *engine.Module
+	id string
 
 	handlers map[string][]Handler
 	order    []string
@@ -47,12 +46,12 @@ type handlerError struct {
 	Err   string `json:"error"`
 }
 
-// New builds a City with an in-process engine seeded from the environment the
-// robocity-sim CLI sets (ROBOCITY_SIM_SEED / _TICKS / _JSON / _QUIET / _CITY /
-// _LIVE). Defaults: seed 7 (canonical), 500 ticks, city "local". New never fails
-// so user code can write `city := sc.New()`.
+// New builds a City configured from the environment the robocity-sim CLI sets
+// (ROBOCITY_SIM_SEED / _TICKS / _JSON / _QUIET / _CITY). Defaults: seed 7 (canonical),
+// 500 ticks, city "local". New never fails and does NOT touch the engine (the engine
+// .so is resolved + loaded lazily in Run), so user code can write `city := sc.New()`.
 func New() *City {
-	c := &City{
+	return &City{
 		handlers:    map[string][]Handler{},
 		acc:         newAccumulator(),
 		storeState:  map[string]any{},
@@ -63,25 +62,6 @@ func New() *City {
 		json:        os.Getenv("ROBOCITY_SIM_JSON") == "1",
 		quiet:       os.Getenv("ROBOCITY_SIM_QUIET") == "1",
 	}
-
-	c.eng = engine.New()
-
-	// --from-live: overlay a fetched public snapshot on a fresh world.
-	if path := os.Getenv("ROBOCITY_SIM_LIVE"); path != "" {
-		if raw, err := os.ReadFile(path); err == nil {
-			if snap, perr := engine.ParseLiveSnapshot(raw); perr == nil {
-				if snap.World.Seed != 0 {
-					c.seed = snap.World.Seed
-				}
-				c.eng.ResetWorld(c.id, c.seed)
-				c.eng.SeedFromSnapshot(snap)
-				return c
-			}
-		}
-	}
-
-	c.eng.ResetWorld(c.id, c.seed)
-	return c
 }
 
 // On registers an event handler. Multiple handlers per event fire in
