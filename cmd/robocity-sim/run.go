@@ -8,10 +8,15 @@ import (
 	"strconv"
 )
 
+// canonicalSeed is the module's canonical world seed — the map every city of this
+// type starts from — used when no city (hence no seed) can be resolved.
+const canonicalSeed = 7
+
 // runOptions are the resolved `run` inputs.
 type runOptions struct {
 	target string // dir or main.go path (may be "")
 	ticks  int
+	seed   int // world seed; <0 means "unset" (resolve from the city, else canonical)
 	json   bool
 	quiet  bool
 	city   string
@@ -19,8 +24,9 @@ type runOptions struct {
 }
 
 // cmdRun materializes the local SDK, builds a temp go.work that overrides the
-// published SDK with it, and runs `go run .` in the user's project against the
-// in-process engine.
+// published SDK with it, and runs `go run .` in the user's project against the REAL
+// game engine (resolved + loaded by the SDK at runtime — downloaded/cached, or
+// $SIMCODE_ENGINE_SO). A fresh run starts from tick 0 on the resolved seed.
 func cmdRun(o runOptions) int {
 	pkgDir, modRoot, err := resolveProject(o.target)
 	if err != nil {
@@ -48,40 +54,46 @@ func cmdRun(o runOptions) int {
 		return 1
 	}
 
-	// The tool always tests your code against your city's CURRENT state — "would
-	// this work if I deployed it right now?". A city's live state is PUBLIC, so
-	// this needs NO token: resolve the repo -> city slug and fetch the public
-	// snapshot, then run your code against it.
-	city := o.city
-	if city == "" {
-		repo := gitRepoSlug(pkgDir)
-		if repo == "" {
-			fmt.Fprintln(os.Stderr, "error: run this inside your city's git repo (so I can tell which city it is), or pass --city <slug>.")
-			return 2
+	// Resolve the world seed + a city label. An explicit --seed wins (offline, no
+	// lookup). Otherwise borrow the seed from your city (repo -> slug -> public
+	// snapshot seed), so the local map matches your live city's map. If that can't be
+	// resolved (not in a repo, offline, no linked city), fall back to the canonical
+	// map (seed 7) — a warning, never a hard failure.
+	seed := int64(canonicalSeed)
+	city := "local"
+	switch {
+	case o.seed >= 0:
+		seed = int64(o.seed)
+		if o.city != "" {
+			city = o.city
 		}
-		slug, err := slugForRepo(o.server, repo)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: couldn't reach %s: %v\n", o.server, err)
-			return 1
-		}
+	default:
+		slug := o.city
 		if slug == "" {
-			fmt.Fprintf(os.Stderr, "error: no city on %s is linked to %s. Create/link a city first, or pass --city <slug>.\n", o.server, repo)
-			return 2
+			if repo := gitRepoSlug(pkgDir); repo != "" {
+				if s, err := slugForRepo(o.server, repo); err == nil {
+					slug = s
+				}
+			}
 		}
-		city = slug
-	}
-
-	snapPath, err := fetchLiveSnapshot(o.server, city, workDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: couldn't fetch '%s' state: %v\n", city, err)
-		return 1
+		if slug != "" {
+			if s, err := seedForCity(o.server, slug); err == nil {
+				seed = s
+				city = slug
+			} else if !o.json {
+				fmt.Fprintf(os.Stderr, "note: couldn't read '%s' seed (%v); using the canonical map (seed %d).\n", slug, err, canonicalSeed)
+			}
+		} else if !o.json {
+			fmt.Fprintf(os.Stderr, "note: no city resolved; using the canonical map (seed %d). Pass --city/--seed to override.\n", canonicalSeed)
+		}
 	}
 
 	env := append(os.Environ(),
 		"GOWORK="+workFile,
 		"ROBOCITY_SIM_TICKS="+strconv.Itoa(o.ticks),
 		"ROBOCITY_SIM_CITY="+city,
-		"ROBOCITY_SIM_LIVE="+snapPath,
+		"ROBOCITY_SIM_SEED="+strconv.FormatInt(seed, 10),
+		"CGO_ENABLED=1", // the engine loader is cgo (dlopen); force it on for `go run`
 	)
 	if o.json {
 		env = append(env, "ROBOCITY_SIM_JSON=1")
@@ -90,7 +102,7 @@ func cmdRun(o runOptions) int {
 		env = append(env, "ROBOCITY_SIM_QUIET=1")
 	}
 	if !o.json {
-		fmt.Printf("[%s] testing your code against this city's CURRENT state\n", city)
+		fmt.Printf("[%s] running your code against the real engine (seed %d, %d ticks, fresh from tick 0)\n", city, seed, o.ticks)
 	}
 
 	cmd := exec.Command("go", "run", ".")

@@ -30,8 +30,11 @@ func TestMaterializeSDK(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "sdk.go")); err != nil {
 		t.Fatalf("root simcode source missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "engine", "module.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "engine", "engine.go")); err != nil {
 		t.Fatalf("engine subpackage missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "enginedl", "enginedl.go")); err != nil {
+		t.Fatalf("enginedl subpackage missing: %v", err)
 	}
 
 	// The dev import prefix was rewritten to the published path; none remain.

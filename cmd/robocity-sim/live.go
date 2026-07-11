@@ -6,28 +6,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
-// fetchLiveSnapshot pulls a city's CURRENT world snapshot from the PUBLIC endpoint
-// (GET {server}/api/city/{slug}/snapshot) and writes it to a file in workDir,
-// returning its path. A city's live state is public (same data the shareable live
-// page uses), so NO token is needed. APPROXIMATE by construction (fog-limited,
-// no in-flight command internals) — a preview, not an exact continuation.
-func fetchLiveSnapshot(server, city, workDir string) (string, error) {
-	snap, err := publicGet(server, "/api/city/"+city+"/snapshot")
+// seedForCity reads a city's world seed from its PUBLIC snapshot
+// (GET {server}/api/city/{slug}/snapshot). A city's live state is public (same data
+// the shareable live page uses), so NO token is needed. A fresh local run uses this
+// seed so the local map matches the live city's map.
+func seedForCity(server, slug string) (int64, error) {
+	b, err := publicGet(server, "/api/city/"+slug+"/snapshot")
 	if err != nil {
-		return "", err
+		return 0, err
 	}
-	path := filepath.Join(workDir, "live-snapshot.json")
-	if err := os.WriteFile(path, snap, 0o644); err != nil {
-		return "", err
+	var snap struct {
+		World struct {
+			Seed int64 `json:"seed"`
+		} `json:"world"`
 	}
-	return path, nil
+	if err := json.Unmarshal(b, &snap); err != nil {
+		return 0, err
+	}
+	return snap.World.Seed, nil
 }
 
 // slugForRepo resolves a repo ("owner/name") to its city slug via the PUBLIC

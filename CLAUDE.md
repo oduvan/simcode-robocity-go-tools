@@ -1,74 +1,79 @@
-# CLAUDE.md — using this test tool when writing city code (Go)
+# CLAUDE.md — using this test tool when writing city code
 
-**This repo is a TEST TOOL, not a city.** It is the local, offline simulator for
-the SimCode **Robot City Builder** game, for controllers written in **Go**. If you
-are an AI writing/iterating on a city controller (`main.go`), use this to **check
-your solution locally BEFORE pushing** it to the city repo. It runs your `main.go`
-against a faithful Go port of the server engine — no network, no GitHub, no Redis,
-no waiting for a deploy.
+**This repo is a TEST TOOL, not a city.** It is the local test runner for the SimCode
+**Robot City Builder** game, for controllers written in **Go**. If you are an AI
+writing/iterating on a city controller (`main.go`), use this to **check your solution
+locally BEFORE pushing** it to the city repo. It runs your `main.go` against the
+**real** game engine — the exact same c-shared library the server runs, downloaded on
+demand — so there is no re-implementation to drift and no network/GitHub/deploy wait.
 
 ## Install it
 
 ```bash
 go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
-# or, from a checkout:
-#   git clone https://github.com/oduvan/simcode-robocity-go-tools
-#   go build -o robocity-sim ./cmd/robocity-sim
+# or, from a checkout:  go build -o robocity-sim ./cmd/robocity-sim
 ```
 
-Needs the Go toolchain (1.23+) on PATH — the tool shells out to `go run` to
-compile the controller.
+**Needs the Go toolchain (1.23+) plus `CGO_ENABLED=1` and a C compiler** (`gcc`) — the
+engine is loaded over cgo (`dlopen`). The first run downloads the engine for your
+OS/arch (a few MB) and caches it under `~/.cache/simcode/`. No third-party Go deps. The
+engine is glibc-linked (Linux/macOS; not musl/alpine).
 
 ## Run your controller
 
-**It always tests your code against your city's CURRENT state** — the whole point
-is "if I push this *now*, does it work?". A city's live state is **public**, so
-this needs **no token**: run it inside your city repo and it auto-detects which
-city this is (via the git remote) and fetches that city's current state.
-
 ```bash
-robocity-sim run .                # ← test against this city's CURRENT state (no token)
-robocity-sim run . --ticks 300    # shorter horizon
-robocity-sim run . --json         # machine-readable (parse this)
-robocity-sim run . --city other   # test against a specific city slug
+robocity-sim run main.go               # run against the real engine (uses this city's map seed)
+robocity-sim run . --ticks 300         # shorter horizon
+robocity-sim run . --json              # machine-readable (parse this)
+robocity-sim run . --seed 7            # force a specific world seed
 ```
 
-The first output line is `[<slug>] testing your code against this city's CURRENT
-state`. If it can't resolve a city (not inside the repo, no linked city) it
-**stops with a clear error** — it never silently tests a fake empty world. A run
-is deliberately **approximate**: tiny randomness/timing differences from the
-server are fine — you're checking that your **logic works**, not predicting the
-server exactly. Real edge cases surface after you push.
+Run it **inside your city repo** and it auto-detects which city this is (via the git
+remote) and borrows that city's **map seed** — so the local world matches your live
+city's map — then runs a fresh simulation from tick 0. If it can't resolve a city (not
+inside the repo, offline), it falls back to the **canonical map** (seed 7). Pass
+`--seed`/`--city` to control this explicitly.
 
-`main.go` is used **unchanged**: it does `import sc "github.com/lyabah/simcode-sdk-go"`,
-registers `city.On(sc.EventIdle, …)` etc., and calls `city.Run()`. The tool
-compiles it against a **local, engine-backed copy of the SDK** (swapped in via a
-temporary `go.work`, without editing your `go.mod`), and `city.Run()` drives the
-tick loop for you instead of talking to Redis.
+`main.go` is used **unchanged**: it imports the published SDK
+`github.com/lyabah/simcode-sdk-go`, registers `city.On(...)` handlers, and calls
+`city.Run()`. The tool materializes a local, engine-backed copy of the SDK (same public
+API), overrides the published one with a temporary `go.work`, and runs `go run .` for
+you — so your code compiles and runs unchanged, only the transport is swapped.
 
 ## Read the output
 
-- **Per-tick feed** (default): each line is `t<tick> <robot> <event>` for game
-  events, or `t<tick> <robot>: <text>` for your `r.Log(...)` lines. This is your
-  trace of what the fleet actually did.
-- **SUMMARY** (always, at the end): `final tick`, `robots`, `robots destroyed`,
-  `buildings` (+ by type), `ore`/`metal` **mined / stored**, `spots found`,
-  `discovered cells`. This is your scorecard.
-- `--json` gives `{seed, ticks, city, summary, feed[]}` — parse `summary` to grade
-  a run and `feed` to see the sequence of events.
+The run ends with a **SUMMARY** (your scorecard): `final tick`, `robots`
+(alive)/`robots destroyed`, `buildings` (+ by type), `base level`, ore/metal
+mined+stored, `spots found`, `discovered cells`, and `handler errors`. `--json` gives
+the same as a JSON document. The command **exits non-zero if any handler panicked** —
+watch the exit code / `handler_errors` in a loop.
 
 ### What "good" looks like
-- `robots destroyed` should be **0** — a non-zero count means a robot ran its
-  battery dry mid-flight (recharge earlier / fly shorter hops).
-- `ore.mined` / `metal.mined` climbing and `buildings_by_type` growing (mining,
-  storage, flying_station, more station-produced robots) means the city is actually
-  developing, not just exploring. The shipped starter only explores, so a fresh
-  run of it shows `mined: 0` and `buildings: base=1` — beat that. See
-  `examples/mine` for a controller that mines and hauls.
+- `robots destroyed` should be **0** — a non-zero count means a robot ran its battery
+  dry mid-flight (recharge earlier / fly shorter hops).
+- Buildings growing (mining, storage, flying_station, station-produced robots) and the
+  Base level climbing means the city is actually developing, not just exploring. The
+  shipped starter only explores, so a fresh run shows `buildings: base=1, storage=1`
+  and Base level 1 — beat that.
+
+## It's the real engine (not a preview)
+
+The game logic is the server's actual engine, so a local run is **not** an
+approximation of the rules — same seed → same world, same mechanics, same event timing
+(intents lag one tick, exactly like production). The only thing that differs from
+production is the transport. Two caveats:
+
+- A run starts from a **fresh tick-0 world** on your city's seed, not your city's
+  *current* live state.
+- **Crashes are surfaced, not swallowed.** If a handler panics, the run continues (one
+  bad event can't kill the loop, like the server) but the tool reports it in the
+  SUMMARY (`handler errors`) and via a non-zero exit code.
+
+Set `SIMCODE_ENGINE_SO=/path/to/libengine-*.so` to run against a local engine build
+instead of downloading (used by the smoke test + engine developers). `SIMCODE_SERVER`
+overrides the download/lookup server.
 
 ## Inspect your city without simulating
-
-Sometimes you just want to *see* your city's live data — not run your code (JSON out):
 
 ```bash
 robocity-sim inspect             # this city's status         (public, no token)
@@ -78,94 +83,50 @@ robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOK
 ```
 
 `inspect` and `--state` read the **public** city snapshot (no token). `--logs` and
-`--list` aren't public, so they use the authed MCP tools and need `SIMCODE_TOKEN`.
-
-## Important: it's a faithful PREVIEW, not the server
-
-- The engine here is a **re-implementation** of the server's Go engine (a
-  DECOUPLED, in-process port under `sdklocal/engine`, with no Redis and no
-  platform imports). World generation is **verified identical** (same seed → same
-  map, spot positions and richness — `hashCell` is pinned against the Python port,
-  which is byte-checked against the server), and the rules/events/timing mirror
-  the server (intents lag one tick, just like production). Parity is maintained
-  against the Go source; if you find a divergence in mechanics, treat it as a bug
-  in this tool.
-- It tests against your city's current **public** snapshot (robots, buildings,
-  inventories, energy) plus the full map regenerated from the seed. A run is an
-  **approximate** continuation — small randomness/timing differences from the
-  server are expected and fine. You're checking that your **logic runs correctly**
-  (no crashes, sensible behavior), not forecasting the server bit-for-bit; real
-  edge cases surface after you push.
-
-## Handler errors & subscription fidelity
-
-- **Panics are surfaced, not swallowed.** If a handler panics on an event, the
-  run continues (one bad event can't kill the loop, exactly like the server) but
-  the tool **reports it**: a `⚠ N handler error(s)` block on stderr, a
-  `handler errors` line in the SUMMARY, an `errors[]` array in `--json`, and a
-  **non-zero exit** (`go run` reports the sim's exit-3 as `exit status 3` and
-  itself exits non-zero). So a bug in your controller shows up here instead of
-  after a push. (Watch the exit code / the `handler_errors` count in a loop.)
-- **Subscriptions behave like the server** for the normal pattern (handlers
-  registered at import via `city.On(...)`), including idle re-emission (a passive
-  handler keeps getting events; robots never permanently stall). The ONLY server
-  behavior not reproduced: the *instantaneous replay* the server sends when a
-  handler subscribes to `spawn`/`idle` **mid-run** — here that handler instead
-  receives the next emission a few ticks later. Equivalent for virtually every
-  controller.
+`--list` use the authed MCP tools (`get_recent_logs` / `list_cities`) and need
+`SIMCODE_TOKEN`.
 
 ## Workflow for iterating on a city controller
 
 1. Edit the city's `main.go`.
-2. `robocity-sim run ./my-city --ticks 500 --json` and read the `summary` + tail
-   of `feed`.
-3. If robots stall (no growth), get destroyed, or nothing gets mined/built, adjust
-   the strategy and re-run. It's deterministic — same seed reproduces the exact
-   run, so a change's effect is directly comparable.
+2. `robocity-sim run . --ticks 500 --json` and read the SUMMARY.
+3. If robots stall (no growth), get destroyed, or nothing gets mined/built, adjust the
+   strategy and re-run. It's deterministic — same seed reproduces the exact run.
 4. Once it behaves, push `main.go` to the city repo.
 
 ## Repo layout (for maintainers of THIS tool)
 
-- `sdklocal/` — the **local SDK**: the same public API as the published
-  `github.com/lyabah/simcode-sdk-go`, but its runtime drives the in-process engine.
-  - `names.go`, `contract.go`, `state.go`, `handles.go` — copied verbatim from the
-    published SDK (the client API the user's code imports; do not change its shape).
-  - `sdk.go` — the engine-backed `City` (New/On/Robot/Buildings/Base/World/Run).
-  - `driver.go` — the tick loop (mirrors the Go engine `step`), feed + SUMMARY +
-    `--json` output.
-  - `engine/` — the ported rules engine: `world.go` (`hashCell`, endless lazy gen),
-    `commands.go`/`buildings.go`/`module.go` (Submit/Advance, autonomous
-    mining/construction, Flying Station robot production, Base quest leveling, events), `state.go` (the state.* snapshot
-    the SDK reads), `live.go` (`--from-live` seeding). Pure, deterministic, no Redis.
-- `cmd/robocity-sim/` — the CLI: materializes the embedded SDK, writes the temp
-  `go.work`, runs `go run` on the user's project, streams output. `--from-live`
-  fetch is stdlib `net/http` only.
-- `embed.go` — `//go:embed all:sdklocal`; the SDK source is baked into the binary
-  so the tool works identically after `go install` or a `git clone`.
-- `examples/` — `starter/` (the shipped template) and `mine/` (mines + hauls),
-  each a standalone module (its own `go.mod`) that mimics a real user city repo.
-
-Parity is guarded by porting the Go source under `game/modules/robot_city`. When
-the Go engine changes, update `sdklocal/engine` and the copied client files in
-`sdklocal/` together, and keep `hashCell` / config numbers in lockstep.
+- `sdklocal/` — the **local, engine-backed SDK**: the same public API as the published
+  `github.com/lyabah/simcode-sdk-go`, but its runtime drives the **real** engine over
+  cgo instead of Redis. It is embedded (`embed.go`) and materialized at runtime.
+  - `sdk.go` / `handles.go` / `contract.go` / `state.go` / `names.go` — the SDK-facing
+    read model + dispatch, copied verbatim from the published SDK (keep in sync).
+  - `driver.go` — the tick loop: calls the real engine, applies each delta into the
+    `mirror.go` WorldMirror, projects it into the read model, dispatches events, and
+    feeds the produced intents back as next tick's commands. A Go port of the Python
+    tool's `simcode/_local.py`.
+  - `mirror.go` — the delta-applied world mirror (robots/buildings/tiles + discovered),
+    projected into the state.* JSON the read model decodes.
+  - `engine/` — the **cgo loader**: `dlopen`s the engine `.so` and exchanges JSON with
+    its `EngineTick`/`EngineFree` C-ABI. This is the ONLY cgo package.
+  - `enginedl/` — downloads + caches the engine `.so` from the server
+    (`/api/engine/version` + `/api/engine/lib`); honors `SIMCODE_ENGINE_SO` /
+    `SIMCODE_SERVER`. A Go port of `simcode/_engine_dl.py`.
+- `cmd/robocity-sim/` — the thin CLI: `run` (materialize SDK + go.work, resolve seed,
+  `go run .`), `inspect` (public snapshot / authed MCP tools), and the materialize /
+  go.work plumbing.
+- The engine itself is **not in this repo** — `run` downloads the real
+  `libengine-robot-city-<os>-<arch>` and drives it. So there is **no parity to
+  maintain**: a mechanics change on the server reaches this tool the moment the new
+  engine is published, with no port needed here.
 
 ## Test this tool
 
-Per the platform's Docker-only rule (image `golang:1.23-alpine`):
+Per the platform's Docker-only rule (build/test inside `golang:1.26` with `gcc`; the
+real-engine smoke test runs only with a local engine build via `SIMCODE_ENGINE_SO`):
 
 ```bash
-# Unit + integration tests (engine parity, determinism, flight/energy/destruction,
-# autonomous mining, self-completing construction, Flying Station robot production, SDK loop,
-# CLI materialize/workspace):
-docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
-
-# End-to-end: run the shipped starter through the CLI, fully offline (no Redis,
-# no network). GOPROXY=off proves the workspace override needs no downloads.
-docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine sh -c '
-  go build -o /usr/local/bin/robocity-sim ./cmd/robocity-sim &&
-  cd examples/starter &&
-  GOPROXY=off robocity-sim run . --ticks 300'
+docker run --rm -v "$PWD":/app -w /app golang:1.26 \
+  sh -c "apt-get -qq update && apt-get -qq install -y gcc && \
+         CGO_ENABLED=1 go build ./... && CGO_ENABLED=1 go test ./..."
 ```
-
-A good starter run shows 2 robots, robots moving, energy draining + recharging on
-the Base, discovered cells growing, and **0** destroyed.

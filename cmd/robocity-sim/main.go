@@ -53,10 +53,11 @@ func runCmd(args []string) int {
 
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	ticks := fs.Int("ticks", 500, "ticks to simulate")
+	seed := fs.Int("seed", -1, "world seed (default: your city's seed, else the canonical map, 7)")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	quiet := fs.Bool("quiet", false, "suppress the per-tick feed; print only the summary")
-	city := fs.String("city", "", "city slug to test against (default: auto-detected from this repo's git remote)")
-	server := fs.String("server", "https://robocity.lyabah.com", "MCP server base URL")
+	city := fs.String("city", "", "city slug whose map seed to borrow (default: auto-detected from this repo's git remote)")
+	server := fs.String("server", "https://robocity.lyabah.com", "server base URL (engine download + seed lookup)")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -65,6 +66,7 @@ func runCmd(args []string) int {
 	return cmdRun(runOptions{
 		target: target,
 		ticks:  *ticks,
+		seed:   *seed,
 		json:   *jsonOut,
 		quiet:  *quiet,
 		city:   *city,
@@ -73,30 +75,37 @@ func runCmd(args []string) int {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `robocity-sim — local offline simulator for the SimCode Robot City Builder game
+	fmt.Fprint(os.Stderr, `robocity-sim — local runner for the SimCode Robot City Builder game
 
-Tests your code against your city's CURRENT state (needs SIMCODE_TOKEN). Run it
-inside your city's repo; the city is auto-detected from the git remote.
+Runs your unchanged main.go against the REAL game engine (the exact c-shared library
+the server runs, downloaded + cached on first use), fresh from tick 0. Run it inside
+your city's repo and it borrows that city's map seed (public, no token). Needs
+CGO_ENABLED=1 + a C compiler (the engine is loaded via cgo/dlopen).
 
 Usage:
-  robocity-sim run     [dir-or-main.go] [flags]   # test your code vs the live city
+  robocity-sim run     [dir-or-main.go] [flags]   # run your code against the real engine
   robocity-sim inspect [flags]                    # print live city info (like the MCP tools)
 
 run flags:
   --ticks N       ticks to simulate (default 500)
+  --seed S        world seed (default: your city's seed, else the canonical map, 7)
   --json          emit a JSON document ({seed,ticks,city,summary,errors,feed}) instead of text
   --quiet         suppress the per-tick feed; print only the SUMMARY
-  --city SLUG     city slug to test against (default: auto-detected from this repo's git remote)
-  --server URL    MCP server base URL (default https://robocity.lyabah.com)
+  --city SLUG     city slug whose map seed to borrow (default: auto-detected from the git remote)
+  --server URL    server base URL for engine download + seed lookup (default https://robocity.lyabah.com)
 
 inspect flags:
   --state         full current world state    --logs N   recent activity log lines
   --list          list your cities            --city SLUG / --server URL
 
+Environment:
+  SIMCODE_ENGINE_SO   path to a local engine .so (skips the download; for engine devs / CI)
+  SIMCODE_SERVER      override the engine-download / lookup server
+
 Examples:
-  export SIMCODE_TOKEN=...               # dashboard → "Connect via MCP"
-  robocity-sim run                       # test ./ against this repo's city, current state
+  robocity-sim run                       # run ./ against the real engine (this repo's city seed)
   robocity-sim run . --ticks 300
+  robocity-sim run examples/starter --seed 7 --ticks 120
   robocity-sim inspect                   # this city's status
   robocity-sim inspect --state           # full world state (JSON)
   robocity-sim inspect --logs 100        # recent activity log

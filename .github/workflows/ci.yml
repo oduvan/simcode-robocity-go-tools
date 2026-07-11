@@ -5,12 +5,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1" # the engine loader is cgo (dlopen); the build needs a C toolchain
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
+      - name: Install C toolchain (cgo)
+        run: sudo apt-get update && sudo apt-get install -y gcc
       - run: go build ./...
       - run: go vet ./...
-      - name: Test (incl. parity vs the server engine fixture)
-        run: go test ./...
+      # The real-engine smoke test runs only with a local engine build
+      # (SIMCODE_ENGINE_SO); without it, it self-skips and the rest of the suite runs.
+      - run: go test ./...
