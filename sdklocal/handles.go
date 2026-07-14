@@ -56,12 +56,10 @@ func (r *Robot) Energy() float64 {
 	return 0
 }
 
-// Inventory is the robot's carried resources.
-func (r *Robot) Inventory() Inventory {
-	if r.data.Inventory != nil {
-		return *r.data.Inventory
-	}
-	return Inventory{}
+// Inventory is the robot's carried resources (a multi-item Store; zero value
+// with a non-nil empty map when the robot carries nothing).
+func (r *Robot) Inventory() Store {
+	return storeOrEmpty(r.data.Inventory)
 }
 
 // Here describes the robot's current cell (terrain / spot / building).
@@ -99,23 +97,23 @@ func (r *Robot) MoveTo(x, y float64) *Robot { return r.emit(CmdMoveTo, x, y) }
 // Charge recharges the robot's battery while it is parked on a Flying Station.
 func (r *Robot) Charge() *Robot { return r.emit(CmdCharge) }
 
-// PickUp loads resource from the current cell. No args picks up all available.
-func (r *Robot) PickUp(amounts ...int) *Robot { return r.transfer(CmdPickUp, amounts) }
+// PickUp loads `amount` of `item` from the current cell (wire args [item, amount]).
+func (r *Robot) PickUp(item string, amount int) *Robot { return r.emit(CmdPickUp, item, amount) }
 
-// Drop unloads resource onto the current cell. No args drops all.
-func (r *Robot) Drop(amounts ...int) *Robot { return r.transfer(CmdDrop, amounts) }
+// PickUpItem loads all available of a single `item` (wire args [item]).
+func (r *Robot) PickUpItem(item string) *Robot { return r.emit(CmdPickUp, item) }
 
-func (r *Robot) transfer(cmd string, amounts []int) *Robot {
-	if len(amounts) == 0 {
-		return r.emit(cmd)
-	}
-	ore := amounts[0]
-	metal := 0
-	if len(amounts) > 1 {
-		metal = amounts[1]
-	}
-	return r.emit(cmd, ore, metal)
-}
+// PickUpAll loads all available of every item (wire args []).
+func (r *Robot) PickUpAll() *Robot { return r.emit(CmdPickUp) }
+
+// Drop unloads `amount` of `item` onto the current cell (wire args [item, amount]).
+func (r *Robot) Drop(item string, amount int) *Robot { return r.emit(CmdDrop, item, amount) }
+
+// DropItem unloads all carried of a single `item` (wire args [item]).
+func (r *Robot) DropItem(item string) *Robot { return r.emit(CmdDrop, item) }
+
+// DropAll unloads the robot's entire inventory (wire args []).
+func (r *Robot) DropAll() *Robot { return r.emit(CmdDrop) }
 
 // Send delivers a payload message to another robot.
 func (r *Robot) Send(targetID string, payload any) *Robot {
@@ -168,12 +166,10 @@ func (b *Building) Position() (int, int) {
 // Status is the building's status (constructing|active).
 func (b *Building) Status() string { return b.data.Status }
 
-// Storage is the building's stored resources (zero value if none).
-func (b *Building) Storage() Storage {
-	if b.data.Storage != nil {
-		return *b.data.Storage
-	}
-	return Storage{}
+// Storage is the building's stored resources (a multi-item Store; zero value
+// with a non-nil empty map when the building stores nothing).
+func (b *Building) Storage() Store {
+	return storeOrEmpty(b.data.Storage)
 }
 
 // Spot is the resource deposit under the building, if any.

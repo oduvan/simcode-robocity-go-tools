@@ -7,39 +7,51 @@ package simcode
 
 import "encoding/json"
 
-// Inventory is a robot's carried resources.
-type Inventory struct {
-	Ore      int `json:"ore"`
-	Metal    int `json:"metal"`
-	Capacity int `json:"capacity"`
+// Store is a multi-item resource bag with a shared capacity — used for both a
+// robot's carried inventory and a building's storage. It decodes the wire shape
+// {"items":{item:qty,...},"capacity":N}.
+type Store struct {
+	Items    map[string]int `json:"items"`
+	Capacity int            `json:"capacity"`
 }
 
-// Free is the remaining carry capacity.
-func (i Inventory) Free() int {
-	f := i.Capacity - (i.Ore + i.Metal)
+// Total is the sum of all stored item quantities.
+func (s Store) Total() int {
+	t := 0
+	for _, v := range s.Items {
+		t += v
+	}
+	return t
+}
+
+// Free is the remaining capacity (never negative).
+func (s Store) Free() int {
+	f := s.Capacity - s.Total()
 	if f < 0 {
 		return 0
 	}
 	return f
 }
 
-// IsFull reports whether the robot can carry no more.
-func (i Inventory) IsFull() bool { return i.Free() <= 0 }
+// Get returns the stored quantity of item (0 if absent).
+func (s Store) Get(item string) int { return s.Items[item] }
 
-// Storage is a building's stored resources.
-type Storage struct {
-	Ore      int `json:"ore"`
-	Metal    int `json:"metal"`
-	Capacity int `json:"capacity"`
-}
+// Has reports whether the store holds a positive quantity of item.
+func (s Store) Has(item string) bool { return s.Items[item] > 0 }
 
-// Free is the remaining storage capacity.
-func (s Storage) Free() int {
-	f := s.Capacity - (s.Ore + s.Metal)
-	if f < 0 {
-		return 0
+// IsFull reports whether the store can hold no more.
+func (s Store) IsFull() bool { return s.Free() <= 0 }
+
+// storeOrEmpty dereferences a decoded *Store, guaranteeing a non-nil Items map
+// so callers can index Get/Has safely even when the wire field was absent.
+func storeOrEmpty(s *Store) Store {
+	if s == nil {
+		return Store{Items: map[string]int{}}
 	}
-	return f
+	if s.Items == nil {
+		return Store{Items: map[string]int{}, Capacity: s.Capacity}
+	}
+	return *s
 }
 
 // Spot is a finite resource deposit on a tile / under a Mining building.
@@ -53,7 +65,7 @@ type robotState struct {
 	Type      string      `json:"type"`
 	Pos       *[2]float64 `json:"pos"`
 	Facing    string      `json:"facing"`
-	Inventory *Inventory  `json:"inventory"`
+	Inventory *Store      `json:"inventory"`
 	Energy    *float64    `json:"energy"`
 	State     string      `json:"state"`
 	Command   string      `json:"command"`
@@ -65,7 +77,7 @@ type buildingState struct {
 	Pos          *[2]int        `json:"pos"`
 	Status       string         `json:"status"`
 	Progress     *float64       `json:"progress"`
-	Storage      *Storage       `json:"storage"`
+	Storage      *Store         `json:"storage"`
 	Spot         *Spot          `json:"spot"`
 	Production   map[string]any `json:"production"`
 	Construction map[string]any `json:"construction"`

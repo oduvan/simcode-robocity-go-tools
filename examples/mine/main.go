@@ -40,9 +40,9 @@ func main() {
 
 		// On a known ore spot with a free cell and a kit -> place a mine + seed it.
 		if here.Spot != nil && here.Spot.Resource == "ore" && here.Building == nil {
-			if inv.Ore >= 6 && inv.Metal >= 3 {
+			if inv.Get("ore") >= 6 && inv.Get("metal") >= 3 {
 				city.World().Build(sc.BuildingMining, cx, cy)
-				r.Drop()
+				r.DropAll()
 				return
 			}
 		}
@@ -50,16 +50,16 @@ func main() {
 		// Standing on an active mine with output -> load up and haul it home.
 		if here.Building != nil && here.Building.Type() == sc.BuildingMining &&
 			here.Building.Status() == sc.StatusActive {
-			if here.Building.Storage().Ore > 0 && !inv.IsFull() {
-				r.PickUp()
+			if here.Building.Storage().Has("ore") && !inv.IsFull() {
+				r.PickUpAll()
 				return
 			}
 		}
 
 		// At the Base carrying ore -> drop it in (the Base is the quest accumulator;
 		// it accepts up to the current quest requirement and levels up when met).
-		if atBase && inv.Ore > 0 {
-			r.Drop()
+		if atBase && inv.Has("ore") {
+			r.DropAll()
 			return
 		}
 
@@ -70,7 +70,7 @@ func main() {
 				return
 			}
 		}
-		if inv.Ore > 0 && !atBase {
+		if inv.Has("ore") && !atBase {
 			r.MoveTo(float64(bx), float64(by))
 			return
 		}
