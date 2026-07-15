@@ -172,6 +172,29 @@ func (b *Building) Storage() Store {
 	return storeOrEmpty(b.data.Storage)
 }
 
+// Input is a processor's input pool — where haulers drop() raw feedstock — or
+// nil on a building with no input store (Base/Storage/Station). The returned
+// *Store has a non-nil Items map when present.
+func (b *Building) Input() *Store { return storePtr(b.data.Input) }
+
+// Output is a processor's output pool — where haulers pick_up() finished goods —
+// or nil on a building with no output store.
+func (b *Building) Output() *Store { return storePtr(b.data.Output) }
+
+// Recoverable is the haulable materials store a building exposes while
+// decommissioning (its build cost refund + current contents); nil otherwise.
+func (b *Building) Recoverable() *Store { return storePtr(b.data.Recoverable) }
+
+// Recipe is a processor's fixed conversion (inputs → output×amount over ticks),
+// or nil on a non-processor building.
+func (b *Building) Recipe() *Recipe {
+	rv := b.data.Recipe
+	if rv == nil {
+		return nil
+	}
+	return &Recipe{inputs: rv.Inputs, output: rv.Output, outAmount: rv.OutAmount, ticks: rv.Ticks}
+}
+
 // Spot is the resource deposit under the building, if any.
 func (b *Building) Spot() *Spot { return b.data.Spot }
 
@@ -188,6 +211,31 @@ func (b *Building) Level() int { return b.data.Level }
 // Nil for non-Base buildings.
 func (b *Building) Quest() map[string]any { return b.data.Quest }
 
+// Recipe is a read-only view of a processor building's fixed conversion.
+type Recipe struct {
+	inputs    map[string]int
+	output    string
+	outAmount int
+	ticks     int
+}
+
+// Inputs are the items (item → qty) consumed per batch (non-nil, possibly empty).
+func (r *Recipe) Inputs() map[string]int {
+	if r.inputs == nil {
+		return map[string]int{}
+	}
+	return r.inputs
+}
+
+// Output is the item name this recipe produces.
+func (r *Recipe) Output() string { return r.output }
+
+// OutAmount is how many of the output item one batch yields.
+func (r *Recipe) OutAmount() int { return r.outAmount }
+
+// Ticks is how many simulation ticks one batch takes.
+func (r *Recipe) Ticks() int { return r.ticks }
+
 // BuildRobot queues n robots built at THIS Flying Station. The command targets
 // this building's id; the engine rejects a non-station target with a `blocked`
 // reason `not_a_station`. Each queued unit consumes the robot recipe from this
@@ -201,6 +249,15 @@ func (b *Building) BuildRobot(n int) *Building {
 // finishes).
 func (b *Building) Cancel() *Building {
 	b.city.acc.addCommand(b.ID, makeCommand(CmdBaseCancel))
+	return b
+}
+
+// Destroy decommissions THIS building. Destroy is world-scoped (args [x, y]), so
+// it targets the building's current position — a convenience wrapper over
+// World().Destroy for when you already hold the handle.
+func (b *Building) Destroy() *Building {
+	x, y := b.Position()
+	b.city.acc.addCommand("world", makeCommand(CmdDestroy, x, y))
 	return b
 }
 
@@ -246,6 +303,17 @@ func (w World) Seed() int64 { return w.snap.world.Seed }
 func (w World) Build(buildingType string, x, y int) World {
 	if w.city != nil {
 		w.city.acc.addCommand("world", makeCommand(CmdBuild, buildingType, x, y))
+	}
+	return w
+}
+
+// Destroy decommissions the building at (x, y) — a world-scoped order (sibling of
+// Build). The building enters `decommissioning`: its build-cost refund plus
+// current contents become a recoverable store robots haul to Storage; once empty
+// it is removed and a building_destroyed event fires.
+func (w World) Destroy(x, y int) World {
+	if w.city != nil {
+		w.city.acc.addCommand("world", makeCommand(CmdDestroy, x, y))
 	}
 	return w
 }

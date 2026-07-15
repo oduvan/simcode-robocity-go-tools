@@ -40,6 +40,43 @@ func (e Event) Get(key string) any {
 	return nil
 }
 
+// BuildingID returns the building this event addresses (for building-addressed
+// supply-chain events like resource_produced / production_blocked /
+// building_destroyed / decommission_started), or "" if the payload carries none.
+func (e Event) BuildingID() string { return e.getString("building_id") }
+
+// Item returns the item name a resource_produced event carries ("" if absent).
+func (e Event) Item() string { return e.getString("item") }
+
+// Amount returns the quantity a resource_produced event carries (0 if absent).
+func (e Event) Amount() int { return e.getInt("amount") }
+
+// Reason returns a production_blocked event's reason (e.g. "output_full" |
+// "input_short"), or "" if the payload carries none.
+func (e Event) Reason() string { return e.getString("reason") }
+
+// getString reads a payload/envelope field as a string ("" if missing/wrong type).
+func (e Event) getString(key string) string {
+	if s, ok := e.Get(key).(string); ok {
+		return s
+	}
+	return ""
+}
+
+// getInt reads a payload field as an int. JSON numbers decode to float64, so
+// accept both (0 if missing/wrong type).
+func (e Event) getInt(key string) int {
+	switch v := e.Get(key).(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	}
+	return 0
+}
+
 // decodeEvent parses a raw event envelope (kept for parity/testing).
 func decodeEvent(raw []byte) (Event, error) {
 	var ev Event

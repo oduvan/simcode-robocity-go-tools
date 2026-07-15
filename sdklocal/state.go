@@ -54,10 +54,32 @@ func storeOrEmpty(s *Store) Store {
 	return *s
 }
 
+// storePtr normalizes an optional *Store: nil stays nil (the wire field was
+// absent — e.g. a non-processor has no input/output pool), but a present store
+// is guaranteed a non-nil Items map so Get/Has are safe to index.
+func storePtr(s *Store) *Store {
+	if s == nil {
+		return nil
+	}
+	if s.Items == nil {
+		return &Store{Items: map[string]int{}, Capacity: s.Capacity}
+	}
+	return s
+}
+
 // Spot is a finite resource deposit on a tile / under a Mining building.
 type Spot struct {
 	Resource  string `json:"resource"`
 	Remaining int    `json:"remaining"`
+}
+
+// recipeView is the wire decode of a processor building's fixed conversion
+// (schema.go RecipeView). Surfaced to user code through Building.Recipe.
+type recipeView struct {
+	Inputs    map[string]int `json:"inputs"`
+	Output    string         `json:"output"`
+	OutAmount int            `json:"out_amount"`
+	Ticks     int            `json:"ticks"`
 }
 
 type robotState struct {
@@ -83,6 +105,12 @@ type buildingState struct {
 	Construction map[string]any `json:"construction"`
 	Level        int            `json:"level"`          // Base only: the objective level (1+)
 	Quest        map[string]any `json:"quest"`          // Base only: {required, progress}
+	// Supply-chain (#5): processor input/output pools, its fixed recipe, and the
+	// recoverable materials store while decommissioning. All nil on non-processors.
+	Input       *Store      `json:"input"`
+	Output      *Store      `json:"output"`
+	Recipe      *recipeView `json:"recipe"`
+	Recoverable *Store      `json:"recoverable"`
 }
 
 type tileState struct {

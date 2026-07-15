@@ -33,6 +33,12 @@ const (
 	EventMessage              = "message"
 	EventBaseLevelUp          = "base_level_up"
 	EventQuestUpdated         = "quest_updated"
+	// Supply-chain (#5) building-addressed events (empty robot; payload carries
+	// building_id). They do not overload robot idle.
+	EventResourceProduced    = "resource_produced"    // {building_id, item, amount}
+	EventProductionBlocked   = "production_blocked"   // {building_id, reason}
+	EventBuildingDestroyed   = "building_destroyed"   // {building_id}
+	EventDecommissionStarted = "decommission_started" // {building_id}
 )
 
 // Command names (script -> GAME).
@@ -43,7 +49,8 @@ const (
 	CmdCharge     = "charge"
 	CmdSend       = "send"
 	CmdCancel     = "cancel"
-	CmdBuild      = "build" // world-scoped (World.Build)
+	CmdBuild      = "build"   // world-scoped (World.Build)
+	CmdDestroy    = "destroy" // world-scoped (World.Destroy), args [x, y]
 	CmdBuildRobot = "build_robot"
 	CmdBaseCancel = "base_cancel"
 )
@@ -54,6 +61,19 @@ const (
 	BuildingMining        = "mining"
 	BuildingStorage       = "storage"
 	BuildingFlyingStation = "flying_station"
+	// Supply-chain (#5) processor + advanced building types.
+	BuildingSmelter         = "smelter"          // ore   -> plate   (T1)
+	BuildingWireMill        = "wire_mill"        // metal -> wire    (T1)
+	BuildingGlassworks      = "glassworks"       // crystal -> glass (T1)
+	BuildingKiln            = "kiln"             // carbon -> coke   (T1)
+	BuildingAssembler       = "assembler"        // plate+wire -> part      (T2)
+	BuildingElectronicsLab  = "electronics_lab"  // wire+glass -> circuit   (T2)
+	BuildingAlloyFurnace    = "alloy_furnace"    // plate+coke -> alloy     (T2)
+	BuildingModuleAssembler = "module_assembler" // part+circuit -> module  (T3)
+	BuildingFrameShop       = "frame_shop"       // alloy+plate -> frame    (T3)
+	BuildingDeepMine        = "deep_mine"        // upgraded mining
+	BuildingWarehouse       = "warehouse"        // upgraded storage
+	BuildingChargingTower   = "charging_tower"   // upgraded station
 )
 
 // Robot state enum.
@@ -67,8 +87,9 @@ const (
 
 // Building status enum.
 const (
-	StatusConstructing = "constructing"
-	StatusActive       = "active"
+	StatusConstructing    = "constructing"
+	StatusActive          = "active"
+	StatusDecommissioning = "decommissioning" // #5: torn down, materials recoverable
 )
 
 // Well-known state KV sub-keys (mirror of the runtime's _STATE_KEYS).
