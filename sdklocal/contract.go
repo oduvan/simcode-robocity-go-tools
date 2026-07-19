@@ -45,6 +45,20 @@ func (e Event) Get(key string) any {
 // building_destroyed / decommission_started), or "" if the payload carries none.
 func (e Event) BuildingID() string { return e.getString("building_id") }
 
+// RobotID returns the robot a robot-addressed payload names — for events that
+// carry the id in the payload rather than the envelope (robot_expired,
+// repair_complete). Falls back to the envelope robot field if the payload has none.
+func (e Event) RobotID() string {
+	if id := e.getString("robot_id"); id != "" {
+		return id
+	}
+	return e.Robot
+}
+
+// Condition returns the building condition (0-100) a maintenance_needed /
+// repair_complete event carries (0 if the payload has none). #42.
+func (e Event) Condition() int { return e.getInt("condition") }
+
 // Item returns the item name a resource_produced event carries ("" if absent).
 func (e Event) Item() string { return e.getString("item") }
 

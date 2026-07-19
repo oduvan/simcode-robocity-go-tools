@@ -62,6 +62,25 @@ func (r *Robot) Inventory() Store {
 	return storeOrEmpty(r.data.Inventory)
 }
 
+// LifeRemaining is the robot's remaining cumulative flight distance before it
+// expires (robot_expired). 0 if unknown. Retire/replace robots before it runs
+// out. #42.
+func (r *Robot) LifeRemaining() float64 {
+	if r.data.LifeRemaining != nil {
+		return *r.data.LifeRemaining
+	}
+	return 0
+}
+
+// LifeMax is the robot's total lifespan (max cumulative flight distance) for its
+// type. 0 if unknown. #42.
+func (r *Robot) LifeMax() float64 {
+	if r.data.LifeMax != nil {
+		return *r.data.LifeMax
+	}
+	return 0
+}
+
 // Here describes the robot's current cell (terrain / spot / building).
 type Here struct {
 	X, Y     int
@@ -96,6 +115,12 @@ func (r *Robot) MoveTo(x, y float64) *Robot { return r.emit(CmdMoveTo, x, y) }
 
 // Charge recharges the robot's battery while it is parked on a Flying Station.
 func (r *Robot) Charge() *Robot { return r.emit(CmdCharge) }
+
+// Repair (Mechanic only) starts a repair process on the worn building on the
+// robot's current cell, draining the robot's held metal into the building's
+// condition until it runs dry or the building is full (repair_complete). No
+// args — like Charge, it targets whatever building the robot sits on. #42.
+func (r *Robot) Repair() *Robot { return r.emit(CmdRepair) }
 
 // PickUp loads `amount` of `item` from the current cell (wire args [item, amount]).
 func (r *Robot) PickUp(item string, amount int) *Robot { return r.emit(CmdPickUp, item, amount) }
@@ -211,6 +236,15 @@ func (b *Building) Level() int { return b.data.Level }
 // Nil for non-Base buildings.
 func (b *Building) Quest() map[string]any { return b.data.Quest }
 
+// Condition is a wearing T2/T3 processor's condition meter (0-100); productivity
+// scales with it and it stops producing at 0. Returns nil on buildings that never
+// wear (base/mining/T1/storage/station). A Mechanic tops it up via Repair. #42.
+func (b *Building) Condition() *int { return b.data.Condition }
+
+// Unlocks is the set of building + robot types buildable at the Base's current
+// level (nil on non-Base buildings, or a Base whose state omits it). #42.
+func (b *Building) Unlocks() []string { return b.data.Unlocks }
+
 // Recipe is a read-only view of a processor building's fixed conversion.
 type Recipe struct {
 	inputs    map[string]int
@@ -236,12 +270,22 @@ func (r *Recipe) OutAmount() int { return r.outAmount }
 // Ticks is how many simulation ticks one batch takes.
 func (r *Recipe) Ticks() int { return r.ticks }
 
-// BuildRobot queues n robots built at THIS Flying Station. The command targets
-// this building's id; the engine rejects a non-station target with a `blocked`
-// reason `not_a_station`. Each queued unit consumes the robot recipe from this
-// station's own production store and spawns at the station (empty, full energy).
-func (b *Building) BuildRobot(n int) *Building {
-	b.city.acc.addCommand(b.ID, makeCommand(CmdBuildRobot, n))
+// BuildRobot queues n robots of robotType built at THIS Flying Station (wire args
+// [type, n]). The command targets this building's id; the engine rejects a
+// non-station target (blocked reason not_a_station) and a type unlocked above the
+// Base's level (blocked reason level_required). An empty robotType defaults to
+// RobotBuilder (the starting class); n < 1 clamps to 1. #42. The robot types are
+// RobotBuilder / RobotHauler / RobotScout / RobotMechanic / RobotHeavyHauler /
+// RobotRanger. Each queued unit consumes the robot recipe from this station's own
+// production store and spawns at the station (empty, full energy).
+func (b *Building) BuildRobot(robotType string, n int) *Building {
+	if robotType == "" {
+		robotType = RobotBuilder
+	}
+	if n < 1 {
+		n = 1
+	}
+	b.city.acc.addCommand(b.ID, makeCommand(CmdBuildRobot, robotType, n))
 	return b
 }
 

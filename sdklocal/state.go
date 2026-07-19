@@ -91,6 +91,10 @@ type robotState struct {
 	Energy    *float64    `json:"energy"`
 	State     string      `json:"state"`
 	Command   string      `json:"command"`
+	// Living economy (#42): remaining/max cumulative flight distance (lifespan).
+	// When LifeRemaining reaches 0 the robot expires (robot_expired).
+	LifeRemaining *float64 `json:"life_remaining"`
+	LifeMax       *float64 `json:"life_max"`
 }
 
 type buildingState struct {
@@ -111,6 +115,11 @@ type buildingState struct {
 	Output      *Store      `json:"output"`
 	Recipe      *recipeView `json:"recipe"`
 	Recoverable *Store      `json:"recoverable"`
+	// Living economy (#42): Condition (0-100) on a WEARING T2/T3 processor — nil on
+	// buildings that never wear. Unlocks (Base only) is the set of building + robot
+	// types buildable at the Base's current level.
+	Condition *int     `json:"condition"`
+	Unlocks   []string `json:"unlocks"`
 }
 
 type tileState struct {

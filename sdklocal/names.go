@@ -39,7 +39,26 @@ const (
 	EventProductionBlocked   = "production_blocked"   // {building_id, reason}
 	EventBuildingDestroyed   = "building_destroyed"   // {building_id}
 	EventDecommissionStarted = "decommission_started" // {building_id}
+	// Living economy (#42): fleet expiry + building maintenance. robot_expired is
+	// end-of-life (distinct from the avoidable robot_destroyed energy-death); the
+	// three building events track a wearing T2/T3 processor's condition + repair.
+	EventRobotExpired      = "robot_expired"      // {robot_id}
+	EventMaintenanceNeeded = "maintenance_needed" // {building_id, condition}
+	EventBuildingStopped   = "building_stopped"   // {building_id}
+	EventRepairComplete    = "repair_complete"    // {building_id, robot_id, condition}
 )
+
+// AllEvents is the full set the SDK recognizes — the Go mirror of
+// contract.AllEvents. Kept so tooling/tests can range over every event name.
+var AllEvents = []string{
+	EventSpawn, EventTick, EventIdle, EventArrived, EventBlocked,
+	EventConstructionStarted, EventResourceDelivered, EventConstructionComplete,
+	EventSpotDepleted, EventStorageFull, EventInventoryFull,
+	EventRobotProduced, EventRobotDestroyed, EventChargeComplete, EventMessage,
+	EventBaseLevelUp, EventQuestUpdated,
+	EventResourceProduced, EventProductionBlocked, EventBuildingDestroyed, EventDecommissionStarted,
+	EventRobotExpired, EventMaintenanceNeeded, EventBuildingStopped, EventRepairComplete,
+}
 
 // Command names (script -> GAME).
 const (
@@ -53,6 +72,22 @@ const (
 	CmdDestroy    = "destroy" // world-scoped (World.Destroy), args [x, y]
 	CmdBuildRobot = "build_robot"
 	CmdBaseCancel = "base_cancel"
+	// CmdRepair (#42): a Mechanic robot on a worn building starts a repair process
+	// that drains its held metal into the building's condition. Robot-scoped, no
+	// args (targets the building on the robot's cell, like CmdCharge).
+	CmdRepair = "repair"
+)
+
+// Robot type enum (#42): the build_robot type argument. Distinct classes with
+// different stat/lifespan profiles, unlocked at successive Base levels. Mirror of
+// the engine's robot classes; "builder" is the default (the starting class).
+const (
+	RobotBuilder     = "builder"      // L1 start: generalist
+	RobotHauler      = "hauler"       // L2: big cargo, slow
+	RobotScout       = "scout"        // L2: fast, far, low cargo
+	RobotMechanic    = "mechanic"     // L2: repairs wearing buildings
+	RobotHeavyHauler = "heavy_hauler" // L4: advanced logistics
+	RobotRanger      = "ranger"       // L4: advanced long-lived explorer
 )
 
 // Building type enum (also the world.build type argument values).
@@ -78,11 +113,12 @@ const (
 
 // Robot state enum.
 const (
-	StateIdle     = "idle"
-	StateMoving   = "moving"
-	StateCharging = "charging"
-	StateHauling  = "hauling"
-	StateBlocked  = "blocked"
+	StateIdle      = "idle"
+	StateMoving    = "moving"
+	StateCharging  = "charging"
+	StateHauling   = "hauling"
+	StateRepairing = "repairing" // #42: a Mechanic running a repair on a worn building
+	StateBlocked   = "blocked"
 )
 
 // Building status enum.
