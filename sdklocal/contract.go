@@ -69,6 +69,11 @@ func (e Event) Amount() int { return e.getInt("amount") }
 // "input_short"), or "" if the payload carries none.
 func (e Event) Reason() string { return e.getString("reason") }
 
+// TargetType returns the building type on a world-scoped blocked event (a failed
+// world.build / world.destroy carries the target type + coords so you can tell
+// which action failed), or "" if absent. Read the coords via e.Get("pos"). (#4)
+func (e Event) TargetType() string { return e.getString("type") }
+
 // getString reads a payload/envelope field as a string ("" if missing/wrong type).
 func (e Event) getString(key string) string {
 	if s, ok := e.Get(key).(string); ok {
