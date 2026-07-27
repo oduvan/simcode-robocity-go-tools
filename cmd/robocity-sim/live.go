@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -117,55 +116,4 @@ func parseRepoSlug(url string) string {
 		return strings.Join(parts[len(parts)-2:], "/")
 	}
 	return ""
-}
-
-// mcpCall POSTs a JSON-RPC tools/call to {server}/mcp and returns the raw result map.
-func mcpCall(server, token, name string, args map[string]any) (map[string]json.RawMessage, error) {
-	reqBody, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-		"params": map[string]any{"name": name, "arguments": args},
-	})
-	url := strings.TrimRight(server, "/") + "/mcp"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("MCP server returned %s", resp.Status)
-	}
-	var rpc map[string]json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&rpc); err != nil {
-		return nil, err
-	}
-	return rpc, nil
-}
-
-// contentJSON pulls the first text content block's JSON out of a tools/call result.
-func contentJSON(rpc map[string]json.RawMessage) ([]byte, error) {
-	raw, ok := rpc["result"]
-	if !ok {
-		return nil, fmt.Errorf("MCP response had no result")
-	}
-	var result struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(raw, &result); err == nil {
-		for _, b := range result.Content {
-			if b.Type == "text" {
-				return []byte(b.Text), nil
-			}
-		}
-	}
-	return raw, nil
 }

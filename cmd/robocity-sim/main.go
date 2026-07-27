@@ -6,8 +6,8 @@
 //
 // Usage:
 //
-//	robocity-sim run [dir-or-main.go] [--ticks N] [--json] [--quiet]
-//	                 [--city <slug>] [--server <url>]     (needs SIMCODE_TOKEN)
+//	robocity-sim run     [dir-or-main.go] [--ticks N] [--json] [--quiet] [--city <slug>] [--server <url>]
+//	robocity-sim inspect [--state | --logs N | --errors [--release all|SHA]] [--city <slug>] [--server <url>]
 package main
 
 import (
@@ -84,7 +84,7 @@ CGO_ENABLED=1 + a C compiler (the engine is loaded via cgo/dlopen).
 
 Usage:
   robocity-sim run     [dir-or-main.go] [flags]   # run your code against the real engine
-  robocity-sim inspect [flags]                    # print live city info (like the MCP tools)
+  robocity-sim inspect [flags]                    # print live city info (public REST, no token)
 
 run flags:
   --ticks N       ticks to simulate (default 500)
@@ -94,9 +94,10 @@ run flags:
   --city SLUG     city slug whose map seed to borrow (default: auto-detected from the git remote)
   --server URL    server base URL for engine download + seed lookup (default https://robocity.lyabah.com)
 
-inspect flags:
-  --state         full current world state    --logs N   recent activity log lines
-  --list          list your cities            --city SLUG / --server URL
+inspect flags (all public REST — no token, no MCP):
+  --state         full current world state    --logs N          recent activity log lines
+  --errors        unhandled exceptions        --release all|SHA  widen --errors (default: current release)
+  --city SLUG     city slug (default: auto-detected)   --server URL   server base URL
 
 Environment:
   SIMCODE_ENGINE_SO   path to a local engine .so (skips the download; for engine devs / CI)
@@ -109,5 +110,6 @@ Examples:
   robocity-sim inspect                   # this city's status
   robocity-sim inspect --state           # full world state (JSON)
   robocity-sim inspect --logs 100        # recent activity log
+  robocity-sim inspect --errors          # unhandled exceptions since your last release
 `)
 }

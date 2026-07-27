@@ -127,15 +127,17 @@ instead of downloading (used by the smoke test and engine developers).
 ## Inspect a live city without simulating
 
 ```bash
-robocity-sim inspect             # this city's status         (public, no token)
-robocity-sim inspect --state     # full current world state   (public, no token)
-robocity-sim inspect --logs 100  # recent activity log lines  (needs SIMCODE_TOKEN)
-robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOKEN)
+robocity-sim inspect             # this city's status                     (public, no token)
+robocity-sim inspect --state     # full current world state               (public, no token)
+robocity-sim inspect --logs 100  # recent activity log lines              (public, no token)
+robocity-sim inspect --errors    # unhandled exceptions since last release(public, no token)
 ```
 
-`inspect` and `--state` read the **public** city snapshot (no token). `--logs` and
-`--list` use the authed MCP tools (`get_recent_logs` / `list_cities`) and need
-`SIMCODE_TOKEN`.
+All of `inspect` reads the server's **public REST API** — **no token, no MCP**
+(status/`--state` from the snapshot, `--logs` from `/logs`, `--errors` from
+`/exceptions`). The city is auto-detected from this repo's git remote (or `--city`).
+`--errors` is the first thing to check when a city looks "frozen" — a raised
+handler leaves a robot uncommanded.
 
 ## Examples
 

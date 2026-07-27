@@ -76,15 +76,19 @@ overrides the download/lookup server.
 ## Inspect your city without simulating
 
 ```bash
-robocity-sim inspect             # this city's status         (public, no token)
-robocity-sim inspect --state     # full current world state   (public, no token)
-robocity-sim inspect --logs 100  # recent activity log lines  (needs SIMCODE_TOKEN)
-robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOKEN)
+robocity-sim inspect             # this city's status                     (public, no token)
+robocity-sim inspect --state     # full current world state               (public, no token)
+robocity-sim inspect --logs 100  # recent activity log lines              (public, no token)
+robocity-sim inspect --errors    # unhandled exceptions since last release(public, no token)
+robocity-sim inspect --errors --release all   # …across every release
 ```
 
-`inspect` and `--state` read the **public** city snapshot (no token). `--logs` and
-`--list` use the authed MCP tools (`get_recent_logs` / `list_cities`) and need
-`SIMCODE_TOKEN`.
+`inspect` reads the server's **public REST API** — **no token, no MCP**: status/
+`--state` from the city snapshot, `--logs` from `/logs`, `--errors` from
+`/exceptions`. The city is auto-detected from this repo's git remote (or `--city`).
+`--errors` groups exceptions by type + file:line, each with a sample traceback and
+the log lines leading up to it — the first thing to check when a city looks
+"frozen" (a raise leaves a robot uncommanded).
 
 ## Workflow for iterating on a city controller
 
@@ -113,7 +117,7 @@ robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOK
     (`/api/engine/version` + `/api/engine/lib`); honors `SIMCODE_ENGINE_SO` /
     `SIMCODE_SERVER`. A Go port of `simcode/_engine_dl.py`.
 - `cmd/robocity-sim/` — the thin CLI: `run` (materialize SDK + go.work, resolve seed,
-  `go run .`), `inspect` (public snapshot / authed MCP tools), and the materialize /
+  `go run .`), `inspect` (public REST: snapshot / logs / exceptions), and the materialize /
   go.work plumbing.
 - The engine itself is **not in this repo** — `run` downloads the real
   `libengine-robot-city-<os>-<arch>` and drives it. So there is **no parity to
