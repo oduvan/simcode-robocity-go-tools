@@ -107,8 +107,9 @@ func printStatus(server, slug string) int {
 		Buildings []struct {
 			Type string `json:"type"`
 		} `json:"buildings"`
-		Discovered []json.RawMessage `json:"discovered"`
-		Stats      json.RawMessage   `json:"stats"`
+		Discovered    []json.RawMessage `json:"discovered"`
+		Stats         json.RawMessage   `json:"stats"`
+		HandlerErrors int               `json:"handler_errors"`
 	}
 	if err := json.Unmarshal(b, &snap); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -122,9 +123,15 @@ func printStatus(server, slug string) int {
 		"city": slug, "tick": snap.Tick, "seed": snap.World.Seed,
 		"robots": len(snap.Robots), "buildings": len(snap.Buildings),
 		"buildings_by_type": byType, "discovered_cells": len(snap.Discovered),
+		"handler_errors": snap.HandlerErrors,
 	}
 	if len(snap.Stats) > 0 {
 		out["stats"] = snap.Stats
+	}
+	// Health SIGNAL: a raised handler leaves a robot uncommanded, so a "frozen"
+	// city is usually this.
+	if snap.HandlerErrors > 0 {
+		out["hint"] = fmt.Sprintf("%d unhandled exception(s) since your last release — run: robocity-sim inspect --errors", snap.HandlerErrors)
 	}
 	bb, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(bb))
