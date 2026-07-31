@@ -61,7 +61,7 @@ Options:
 | `--json` | emit a JSON document (`{seed,ticks,city,summary,errors,feed}`) instead of text |
 | `--quiet` | suppress the per-tick feed; print only the SUMMARY |
 | `--city SLUG` | city slug whose map seed to borrow (default: auto-detected from the git remote) |
-| `--server URL` | server base URL for engine download + seed lookup (default `https://robocity.lyabah.com`) |
+| `--server URL` | server base URL for engine download + seed lookup (default `https://simcode.lyabah.com`) |
 
 Your `main.go` is used **unchanged**: it `import`s the published SDK
 `github.com/lyabah/simcode-sdk-go`, registers `city.On(...)` handlers, and calls

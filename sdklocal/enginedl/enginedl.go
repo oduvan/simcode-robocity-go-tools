@@ -10,7 +10,7 @@
 //
 // The library is cached at ~/.cache/simcode/engine-<module>-<version>-<platform>.so
 // and re-used when the cached module+version matches. The server base URL is
-// $SIMCODE_SERVER (default https://robocity.lyabah.com). $SIMCODE_ENGINE_SO overrides
+// $SIMCODE_SERVER (default https://simcode.lyabah.com). $SIMCODE_ENGINE_SO overrides
 // everything with an explicit local build (used by the smoke test + engine devs).
 package enginedl
 
@@ -27,7 +27,7 @@ import (
 )
 
 // DefaultServer is the public server used when $SIMCODE_SERVER is unset.
-const DefaultServer = "https://robocity.lyabah.com"
+const DefaultServer = "https://simcode.lyabah.com"
 
 // ServerBase returns the server base URL ($SIMCODE_SERVER or the default), no slash.
 func ServerBase() string {

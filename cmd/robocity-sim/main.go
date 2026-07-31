@@ -57,7 +57,7 @@ func runCmd(args []string) int {
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	quiet := fs.Bool("quiet", false, "suppress the per-tick feed; print only the summary")
 	city := fs.String("city", "", "city slug whose map seed to borrow (default: auto-detected from this repo's git remote)")
-	server := fs.String("server", "https://robocity.lyabah.com", "server base URL (engine download + seed lookup)")
+	server := fs.String("server", "https://simcode.lyabah.com", "server base URL (engine download + seed lookup)")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -92,7 +92,7 @@ run flags:
   --json          emit a JSON document ({seed,ticks,city,summary,errors,feed}) instead of text
   --quiet         suppress the per-tick feed; print only the SUMMARY
   --city SLUG     city slug whose map seed to borrow (default: auto-detected from the git remote)
-  --server URL    server base URL for engine download + seed lookup (default https://robocity.lyabah.com)
+  --server URL    server base URL for engine download + seed lookup (default https://simcode.lyabah.com)
 
 inspect flags (all public REST — no token, no MCP):
   --state         full current world state    --logs N          recent activity log lines
