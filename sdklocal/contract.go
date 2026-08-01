@@ -1,5 +1,5 @@
 // Wire envelopes + the per-event accumulator. Copied from the published SDK
-// (github.com/lyabah/simcode-sdk-go, contract.go), minus the Redis-only subscribe
+// (github.com/oduvan/simcode-sdk-go, contract.go), minus the Redis-only subscribe
 // envelope. The Event view and the intent/accumulator batching are byte-identical
 // to the server contract, so the local run reproduces production intent ordering.
 package simcode

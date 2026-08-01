@@ -11,18 +11,18 @@ import (
 
 // devModulePrefix is the import path the embedded ./sdklocal source uses in the
 // dev tree. When materialized as a standalone module we rewrite it to the
-// published SDK path so the user's `import "github.com/lyabah/simcode-sdk-go"`
+// published SDK path so the user's `import "github.com/oduvan/simcode-sdk-go"`
 // resolves and the internal engine import resolves under the new module root.
 const (
 	devModulePrefix = "github.com/oduvan/simcode-robocity-go-tools/sdklocal"
-	sdkModulePath   = "github.com/lyabah/simcode-sdk-go"
+	sdkModulePath   = "github.com/oduvan/simcode-sdk-go"
 )
 
 // materializeSDK writes the embedded local SDK to a fresh temp directory as a
-// standalone, stdlib-only module named github.com/lyabah/simcode-sdk-go and
+// standalone, stdlib-only module named github.com/oduvan/simcode-sdk-go and
 // returns its path. The caller removes it. It rewrites every import of the dev
 // prefix to the published SDK path (so `.../sdklocal/engine` becomes
-// `github.com/lyabah/simcode-sdk-go/engine`) and drops *_test.go files.
+// `github.com/oduvan/simcode-sdk-go/engine`) and drops *_test.go files.
 func materializeSDK() (string, error) {
 	dir, err := os.MkdirTemp("", "robocity-sdk-*")
 	if err != nil {

@@ -35,7 +35,7 @@ inside the repo, offline), it falls back to the **canonical map** (seed 7). Pass
 `--seed`/`--city` to control this explicitly.
 
 `main.go` is used **unchanged**: it imports the published SDK
-`github.com/lyabah/simcode-sdk-go`, registers `city.On(...)` handlers, and calls
+`github.com/oduvan/simcode-sdk-go`, registers `city.On(...)` handlers, and calls
 `city.Run()`. The tool materializes a local, engine-backed copy of the SDK (same public
 API), overrides the published one with a temporary `go.work`, and runs `go run .` for
 you — so your code compiles and runs unchanged, only the transport is swapped.
@@ -101,7 +101,7 @@ the log lines leading up to it — the first thing to check when a city looks
 ## Repo layout (for maintainers of THIS tool)
 
 - `sdklocal/` — the **local, engine-backed SDK**: the same public API as the published
-  `github.com/lyabah/simcode-sdk-go`, but its runtime drives the **real** engine over
+  `github.com/oduvan/simcode-sdk-go`, but its runtime drives the **real** engine over
   cgo instead of Redis. It is embedded (`embed.go`) and materialized at runtime.
   - `sdk.go` / `handles.go` / `contract.go` / `state.go` / `names.go` — the SDK-facing
     read model + dispatch, copied verbatim from the published SDK (keep in sync).

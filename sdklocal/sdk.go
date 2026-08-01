@@ -1,5 +1,5 @@
 // The engine-backed City: same public API as the published SDK
-// (github.com/lyabah/simcode-sdk-go), but the runtime drives an IN-PROCESS engine
+// (github.com/oduvan/simcode-sdk-go), but the runtime drives an IN-PROCESS engine
 // instead of Redis. New() builds a canonical (or from-live) world; On registers
 // handlers; Run() runs the local tick loop (see driver.go) and prints the feed +
 // SUMMARY (or JSON). The untrusted user script sees exactly the published API.

@@ -166,7 +166,7 @@ func findModuleRoot(dir string) string {
 
 // writeGoWork writes a temporary go.work that includes the user's module and the
 // materialized local SDK. Because the SDK module path equals the published SDK
-// path, the workspace `use` overrides the user's `require github.com/lyabah/
+// path, the workspace `use` overrides the user's `require github.com/oduvan/
 // simcode-sdk-go ...` with the local, engine-backed copy — no edit to the user's
 // go.mod, and it resolves offline (readonly workspace mode).
 func writeGoWork(path, modRoot, sdkDir string) error {

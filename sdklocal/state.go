@@ -1,5 +1,5 @@
 // The live read model. Copied verbatim from the published SDK
-// (github.com/lyabah/simcode-sdk-go, state.go). Each top-level read (City.Robot /
+// (github.com/oduvan/simcode-sdk-go, state.go). Each top-level read (City.Robot /
 // Buildings / World / Base) decodes the same JSON the server writes to state.*
 // (game/core/contract/schema.go) — here produced in-process by the engine — so a
 // handle reflects the current tick when the handler runs.

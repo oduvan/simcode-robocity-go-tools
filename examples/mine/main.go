@@ -8,7 +8,7 @@ package main
 import (
 	"math"
 
-	sc "github.com/lyabah/simcode-sdk-go"
+	sc "github.com/oduvan/simcode-sdk-go"
 )
 
 func main() {

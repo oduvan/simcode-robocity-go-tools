@@ -1,5 +1,5 @@
 // Frozen event / command / enum names — the Go mirror of game/core/contract.
-// Copied verbatim from the published SDK (github.com/lyabah/simcode-sdk-go) so
+// Copied verbatim from the published SDK (github.com/oduvan/simcode-sdk-go) so
 // user code that references sc.EventIdle, sc.CmdMoveTo, sc.BuildingMining, etc.
 // compiles unchanged against this local, engine-backed SDK.
 package simcode
