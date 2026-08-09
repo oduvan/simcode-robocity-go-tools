@@ -21,8 +21,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/oduvan/simcode-robocity-go-tools/sdklocal/engine"
-	"github.com/oduvan/simcode-robocity-go-tools/sdklocal/enginedl"
+	"github.com/oduvan/simcode-robocity-go-tools/localclient/engine"
+	"github.com/oduvan/simcode-robocity-go-tools/localclient/enginedl"
 )
 
 // engineModule selects which game module's engine to download (robot-city here).

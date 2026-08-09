@@ -22,7 +22,7 @@ func TestMaterializeSDK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading go.mod: %v", err)
 	}
-	if !strings.Contains(string(gm), "module "+sdkModulePath) {
+	if !strings.Contains(string(gm), "module "+clientModulePath) {
 		t.Fatalf("go.mod module path wrong:\n%s", gm)
 	}
 
@@ -45,7 +45,7 @@ func TestMaterializeSDK(t *testing.T) {
 	if strings.Contains(string(sdkGo), devModulePrefix) {
 		t.Fatalf("dev import prefix %q not rewritten in sdk.go", devModulePrefix)
 	}
-	if !strings.Contains(string(sdkGo), sdkModulePath+"/engine") {
+	if !strings.Contains(string(sdkGo), clientModulePath+"/engine") {
 		t.Fatalf("engine import not rewritten to published path in sdk.go")
 	}
 

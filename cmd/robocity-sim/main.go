@@ -2,7 +2,7 @@
 // (main.go) locally against your city's CURRENT state, using an in-process port
 // of the server engine — no GitHub push, no Redis. It compiles the user's
 // UNCHANGED main.go against a local, engine-backed SDK via a temporary go.work
-// that overrides the published github.com/oduvan/simcode-sdk-go.
+// that overrides the published github.com/oduvan/simcode-go.
 //
 // Usage:
 //

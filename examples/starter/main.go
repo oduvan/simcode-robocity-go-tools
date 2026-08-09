@@ -12,7 +12,7 @@ package main
 import (
 	"math"
 
-	sc "github.com/oduvan/simcode-sdk-go"
+	sc "github.com/oduvan/simcode-go"
 )
 
 // Compass headings. A robot advances one heading per trip (kept in its memory) so the

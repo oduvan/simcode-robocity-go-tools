@@ -5,4 +5,4 @@ module example.com/robocity-mine
 
 go 1.23
 
-require github.com/oduvan/simcode-sdk-go v0.0.1
+require github.com/oduvan/simcode-go v0.0.1
