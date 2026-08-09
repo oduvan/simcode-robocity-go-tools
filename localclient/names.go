@@ -1,7 +1,7 @@
 // Frozen event / command / enum names — the Go mirror of game/core/contract.
-// Copied verbatim from the published SDK (github.com/oduvan/simcode-go) so
+// Copied verbatim from the client library (github.com/oduvan/simcode-go) so
 // user code that references sc.EventIdle, sc.CmdMoveTo, sc.BuildingMining, etc.
-// compiles unchanged against this local, engine-backed SDK.
+// compiles unchanged against this local, engine-backed client library.
 package simcode
 
 // Envelope type tags (the "type" field on every message).
@@ -48,7 +48,7 @@ const (
 	EventRepairComplete    = "repair_complete"    // {building_id, robot_id, condition}
 )
 
-// AllEvents is the full set the SDK recognizes — the Go mirror of
+// AllEvents is the full set the client library recognizes — the Go mirror of
 // contract.AllEvents. Kept so tooling/tests can range over every event name.
 var AllEvents = []string{
 	EventSpawn, EventTick, EventIdle, EventArrived, EventBlocked,
@@ -140,7 +140,7 @@ const (
 )
 
 // stateKeys is the order the read-model snapshot is assembled in (matches the
-// published SDK / Python runtime _STATE_KEYS; order matters for decodeSnapshot).
+// client library / Python runtime _STATE_KEYS; order matters for decodeSnapshot).
 var stateKeys = []string{
 	StateMeta, StateWorld, StateRobots, StateBuildings, StateTiles, StateDiscovered,
 }

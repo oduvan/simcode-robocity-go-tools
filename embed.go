@@ -1,4 +1,4 @@
-// Package robocitytools embeds the local, engine-backed SDK source so the
+// Package robocitytools embeds the local, engine-backed client library source so the
 // robocity-sim CLI can materialize it at runtime — the same whether the tool was
 // obtained via `go install ...@latest` (source lives in the module cache and is
 // baked into the binary) or a `git clone`. The materialized copy is a standalone

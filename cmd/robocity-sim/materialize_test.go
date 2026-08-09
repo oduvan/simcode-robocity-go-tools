@@ -7,17 +7,17 @@ import (
 	"testing"
 )
 
-// TestMaterializeSDK checks the embedded SDK is written as a standalone module
+// TestMaterializeClient checks the embedded client library is written as a standalone module
 // with the published module path, the engine subpackage present, the dev import
 // prefix rewritten, and no *_test.go leaking in.
-func TestMaterializeSDK(t *testing.T) {
-	dir, err := materializeSDK()
+func TestMaterializeClient(t *testing.T) {
+	dir, err := materializeClient()
 	if err != nil {
-		t.Fatalf("materializeSDK: %v", err)
+		t.Fatalf("materializeClient: %v", err)
 	}
 	defer os.RemoveAll(dir)
 
-	// go.mod declares the published SDK module path.
+	// go.mod declares the client library module path.
 	gm, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
 		t.Fatalf("reading go.mod: %v", err)
@@ -27,7 +27,7 @@ func TestMaterializeSDK(t *testing.T) {
 	}
 
 	// The root simcode package and the engine subpackage exist.
-	if _, err := os.Stat(filepath.Join(dir, "sdk.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "client.go")); err != nil {
 		t.Fatalf("root simcode source missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "engine", "engine.go")); err != nil {
@@ -38,24 +38,24 @@ func TestMaterializeSDK(t *testing.T) {
 	}
 
 	// The dev import prefix was rewritten to the published path; none remain.
-	sdkGo, err := os.ReadFile(filepath.Join(dir, "sdk.go"))
+	clientGo, err := os.ReadFile(filepath.Join(dir, "client.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(sdkGo), devModulePrefix) {
-		t.Fatalf("dev import prefix %q not rewritten in sdk.go", devModulePrefix)
+	if strings.Contains(string(clientGo), devModulePrefix) {
+		t.Fatalf("dev import prefix %q not rewritten in client.go", devModulePrefix)
 	}
-	if !strings.Contains(string(sdkGo), clientModulePath+"/engine") {
-		t.Fatalf("engine import not rewritten to published path in sdk.go")
+	if !strings.Contains(string(clientGo), clientModulePath+"/engine") {
+		t.Fatalf("engine import not rewritten to published path in client.go")
 	}
 
-	// No test files leaked into the materialized SDK.
+	// No test files leaked into the materialized client library.
 	err = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if strings.HasSuffix(p, "_test.go") {
-			t.Fatalf("test file leaked into materialized SDK: %s", p)
+			t.Fatalf("test file leaked into materialized client library: %s", p)
 		}
 		return nil
 	})
@@ -69,7 +69,7 @@ func TestMaterializeSDK(t *testing.T) {
 func TestWriteGoWork(t *testing.T) {
 	tmp := t.TempDir()
 	wf := filepath.Join(tmp, "go.work")
-	if err := writeGoWork(wf, "/abs/user", "/abs/sdk"); err != nil {
+	if err := writeGoWork(wf, "/abs/user", "/abs/client"); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(wf)
@@ -77,7 +77,7 @@ func TestWriteGoWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if !strings.Contains(s, "/abs/user") || !strings.Contains(s, "/abs/sdk") {
+	if !strings.Contains(s, "/abs/user") || !strings.Contains(s, "/abs/client") {
 		t.Fatalf("go.work missing use directives:\n%s", s)
 	}
 	if strings.Contains(s, "replace") {

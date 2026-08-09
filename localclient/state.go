@@ -1,4 +1,4 @@
-// The live read model. Copied verbatim from the published SDK
+// The live read model. Copied verbatim from the client library
 // (github.com/oduvan/simcode-go, state.go). Each top-level read (City.Robot /
 // Buildings / World / Base) decodes the same JSON the server writes to state.*
 // (game/core/contract/schema.go) — here produced in-process by the engine — so a
@@ -107,8 +107,8 @@ type buildingState struct {
 	Spot         *Spot          `json:"spot"`
 	Production   map[string]any `json:"production"`
 	Construction map[string]any `json:"construction"`
-	Level        int            `json:"level"`          // Base only: the objective level (1+)
-	Quest        map[string]any `json:"quest"`          // Base only: {required, progress}
+	Level        int            `json:"level"` // Base only: the objective level (1+)
+	Quest        map[string]any `json:"quest"` // Base only: {required, progress}
 	// Supply-chain (#5): processor input/output pools, its fixed recipe, and the
 	// recoverable materials store while decommissioning. All nil on non-processors.
 	Input       *Store      `json:"input"`

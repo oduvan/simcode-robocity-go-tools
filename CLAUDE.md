@@ -34,9 +34,9 @@ city's map — then runs a fresh simulation from tick 0. If it can't resolve a c
 inside the repo, offline), it falls back to the **canonical map** (seed 7). Pass
 `--seed`/`--city` to control this explicitly.
 
-`main.go` is used **unchanged**: it imports the published SDK
+`main.go` is used **unchanged**: it imports the client library
 `github.com/oduvan/simcode-go`, registers `city.On(...)` handlers, and calls
-`city.Run()`. The tool materializes a local, engine-backed copy of the SDK (same public
+`city.Run()`. The tool materializes a local, engine-backed copy of the client library (same public
 API), overrides the published one with a temporary `go.work`, and runs `go run .` for
 you — so your code compiles and runs unchanged, only the transport is swapped.
 
@@ -100,11 +100,11 @@ the log lines leading up to it — the first thing to check when a city looks
 
 ## Repo layout (for maintainers of THIS tool)
 
-- `localclient/` — the **local, engine-backed SDK**: the same public API as the published
+- `localclient/` — the **local, engine-backed client library**: the same public API as the published
   `github.com/oduvan/simcode-go`, but its runtime drives the **real** engine over
   cgo instead of Redis. It is embedded (`embed.go`) and materialized at runtime.
-  - `sdk.go` / `handles.go` / `contract.go` / `state.go` / `names.go` — the SDK-facing
-    read model + dispatch, copied verbatim from the published SDK (keep in sync).
+  - `client.go` / `handles.go` / `contract.go` / `state.go` / `names.go` — the client library-facing
+    read model + dispatch, copied verbatim from the client library (keep in sync).
   - `driver.go` — the tick loop: calls the real engine, applies each delta into the
     `mirror.go` WorldMirror, projects it into the read model, dispatches events, and
     feeds the produced intents back as next tick's commands. A Go port of the Python
@@ -116,7 +116,7 @@ the log lines leading up to it — the first thing to check when a city looks
   - `enginedl/` — downloads + caches the engine `.so` from the server
     (`/api/engine/version` + `/api/engine/lib`); honors `SIMCODE_ENGINE_SO` /
     `SIMCODE_SERVER`. A Go port of `simcode/_engine_dl.py`.
-- `cmd/robocity-sim/` — the thin CLI: `run` (materialize SDK + go.work, resolve seed,
+- `cmd/robocity-sim/` — the thin CLI: `run` (materialize client library + go.work, resolve seed,
   `go run .`), `inspect` (public REST: snapshot / logs / exceptions), and the materialize /
   go.work plumbing.
 - The engine itself is **not in this repo** — `run` downloads the real

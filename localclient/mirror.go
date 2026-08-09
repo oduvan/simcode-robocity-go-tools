@@ -3,7 +3,7 @@
 // which itself mirrors the browser reducer. robots/buildings merge by id on their
 // nested objects; tiles/discovered accumulate; `removed` ids drop out (a removed
 // robot => destroyed++). The first delta (full-from-empty) establishes the world;
-// later ones patch it. The mirror is then projected into the SDK's state.* JSON so
+// later ones patch it. The mirror is then projected into the client library's state.* JSON so
 // the unchanged decodeSnapshot builds the read model (see driver.publishState).
 package simcode
 
@@ -19,11 +19,11 @@ type worldMirror struct {
 	tick int64
 	seq  int64
 
-	robots    map[string]map[string]any
-	buildings map[string]map[string]any
-	tiles     map[string]map[string]any // "x,y" -> tile
+	robots     map[string]map[string]any
+	buildings  map[string]map[string]any
+	tiles      map[string]map[string]any // "x,y" -> tile
 	discovered map[[2]int]struct{}
-	stats     map[string]any
+	stats      map[string]any
 
 	destroyed int
 }
@@ -259,9 +259,9 @@ func (m *worldMirror) worldJSON() string {
 	})
 }
 
-func (m *worldMirror) robotsJSON() string  { return marshalString(sortedValues(m.robots)) }
+func (m *worldMirror) robotsJSON() string    { return marshalString(sortedValues(m.robots)) }
 func (m *worldMirror) buildingsJSON() string { return marshalString(sortedValues(m.buildings)) }
-func (m *worldMirror) tilesJSON() string    { return marshalString(sortedValues(m.tiles)) }
+func (m *worldMirror) tilesJSON() string     { return marshalString(sortedValues(m.tiles)) }
 
 func (m *worldMirror) discoveredJSON() string {
 	cells := make([][2]int, 0, len(m.discovered))

@@ -1,18 +1,18 @@
 // The local simulation driver: it drives the REAL game engine (a downloaded
 // c-shared library, loaded over cgo — see the engine subpackage) one tick at a time
-// and mirrors the per-tick delta into a world the read-model SDK reads. This is the
+// and mirrors the per-tick delta into a world the read-model client library reads. This is the
 // Go port of the Python tool's simcode/_local.py: same design as the browser —
 //
 //   - the engine returns a per-tick delta (`changes`); the first is the full starting
 //     world, later ones are incremental;
 //   - we keep a WorldMirror as maps keyed by id / "x,y", updated by applying each delta
 //     field-wise (the same merge the browser reducer does);
-//   - each tick we project the mirror into the SDK's snapshot read model, dispatch the
-//     tick's events through the UNCHANGED SDK dispatch, and hand the produced intent
+//   - each tick we project the mirror into the client library's snapshot read model, dispatch the
+//     tick's events through the UNCHANGED client library dispatch, and hand the produced intent
 //     envelopes back as next tick's commands (intents lag one tick, like production).
 //
 // Only the transport differs; dispatch, the read model, the handles, and the
-// command-accumulation path are all the untouched SDK code.
+// command-accumulation path are all the untouched client library code.
 package simcode
 
 import (
@@ -192,7 +192,7 @@ func (c *City) subscribedEvents() []string {
 // city's in-process state, JSON-normalised.
 //
 // DIVERGENCE FROM THE PYTHON TOOL: Python keeps memory/store as live in-process
-// dicts (a handler mutates r.memory in place), so an int stays an int. The Go SDK's
+// dicts (a handler mutates r.memory in place), so an int stays an int. The Go client's
 // generated starter reads memory with a typed assertion — r.Memory()["hop"].(float64)
 // — because on the SERVER memory round-trips through JSON (Redis KV), where every
 // number is a float64. To reproduce that server behaviour locally we round-trip the
@@ -242,7 +242,7 @@ func (c *City) publishState(m *worldMirror) {
 	c.snap = decodeSnapshot(vals)
 }
 
-// toSimEvent converts a wire event envelope into the SDK Event handlers receive.
+// toSimEvent converts a wire event envelope into the client library Event handlers receive.
 func toSimEvent(city string, we wireEvent) Event {
 	var payload map[string]any
 	if len(we.Payload) > 0 {

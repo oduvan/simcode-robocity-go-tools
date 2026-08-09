@@ -11,20 +11,20 @@ import (
 
 // devModulePrefix is the import path the embedded ./localclient source uses in the
 // dev tree. When materialized as a standalone module we rewrite it to the
-// published SDK path so the user's `import "github.com/oduvan/simcode-go"`
+// client library path so the user's `import "github.com/oduvan/simcode-go"`
 // resolves and the internal engine import resolves under the new module root.
 const (
-	devModulePrefix = "github.com/oduvan/simcode-robocity-go-tools/localclient"
-	clientModulePath   = "github.com/oduvan/simcode-go"
+	devModulePrefix  = "github.com/oduvan/simcode-robocity-go-tools/localclient"
+	clientModulePath = "github.com/oduvan/simcode-go"
 )
 
-// materializeSDK writes the embedded local SDK to a fresh temp directory as a
+// materializeClient writes the embedded local client library to a fresh temp directory as a
 // standalone, stdlib-only module named github.com/oduvan/simcode-go and
 // returns its path. The caller removes it. It rewrites every import of the dev
-// prefix to the published SDK path (so `.../localclient/engine` becomes
+// prefix to the client library path (so `.../localclient/engine` becomes
 // `github.com/oduvan/simcode-go/engine`) and drops *_test.go files.
-func materializeSDK() (string, error) {
-	dir, err := os.MkdirTemp("", "robocity-sdk-*")
+func materializeClient() (string, error) {
+	dir, err := os.MkdirTemp("", "robocity-client-*")
 	if err != nil {
 		return "", err
 	}

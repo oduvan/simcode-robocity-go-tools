@@ -23,9 +23,9 @@ type runOptions struct {
 	server string
 }
 
-// cmdRun materializes the local SDK, builds a temp go.work that overrides the
-// published SDK with it, and runs `go run .` in the user's project against the REAL
-// game engine (resolved + loaded by the SDK at runtime — downloaded/cached, or
+// cmdRun materializes the local client library, builds a temp go.work that overrides the
+// client library with it, and runs `go run .` in the user's project against the REAL
+// game engine (resolved + loaded by the client library at runtime — downloaded/cached, or
 // $SIMCODE_ENGINE_SO). A fresh run starts from tick 0 on the resolved seed.
 func cmdRun(o runOptions) int {
 	pkgDir, modRoot, err := resolveProject(o.target)
@@ -34,12 +34,12 @@ func cmdRun(o runOptions) int {
 		return 2
 	}
 
-	sdkDir, err := materializeSDK()
+	clientDir, err := materializeClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: preparing local SDK: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: preparing local client library: %v\n", err)
 		return 1
 	}
-	defer os.RemoveAll(sdkDir)
+	defer os.RemoveAll(clientDir)
 
 	workDir, err := os.MkdirTemp("", "robocity-work-*")
 	if err != nil {
@@ -49,7 +49,7 @@ func cmdRun(o runOptions) int {
 	defer os.RemoveAll(workDir)
 
 	workFile := filepath.Join(workDir, "go.work")
-	if err := writeGoWork(workFile, modRoot, sdkDir); err != nil {
+	if err := writeGoWork(workFile, modRoot, clientDir); err != nil {
 		fmt.Fprintf(os.Stderr, "error: writing go.work: %v\n", err)
 		return 1
 	}
@@ -165,11 +165,11 @@ func findModuleRoot(dir string) string {
 }
 
 // writeGoWork writes a temporary go.work that includes the user's module and the
-// materialized local SDK. Because the SDK module path equals the published SDK
+// materialized local client library. Because the client library module path equals the client library
 // path, the workspace `use` overrides the user's `require github.com/oduvan/
-// simcode-sdk-go ...` with the local, engine-backed copy — no edit to the user's
+// simcode-go ...` with the local, engine-backed copy — no edit to the user's
 // go.mod, and it resolves offline (readonly workspace mode).
-func writeGoWork(path, modRoot, sdkDir string) error {
-	content := fmt.Sprintf("go 1.23\n\nuse %q\nuse %q\n", modRoot, sdkDir)
+func writeGoWork(path, modRoot, clientDir string) error {
+	content := fmt.Sprintf("go 1.23\n\nuse %q\nuse %q\n", modRoot, clientDir)
 	return os.WriteFile(path, []byte(content), 0o644)
 }

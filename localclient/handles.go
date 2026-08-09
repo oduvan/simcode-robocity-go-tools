@@ -1,4 +1,4 @@
-// Read-model handles + command methods. Copied verbatim from the published SDK
+// Read-model handles + command methods. Copied verbatim from the client library
 // (github.com/oduvan/simcode-go, handles.go). A handle is a thin view over a
 // freshly-read snapshot; commands issued through it are *recorded* on the city's
 // active accumulator (data-in / intents-out), not executed directly. The local

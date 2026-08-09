@@ -4,7 +4,7 @@
 // around to explore the map. It does NOT mine, build, haul, or climb Base levels —
 // that is for YOU to add.
 //
-// Read CLAUDE.md for the whole game (the goal, the buildings, the full SDK API) and
+// Read CLAUDE.md for the whole game (the goal, the buildings, the full client library API) and
 // grow this controller from here. The idea is simple: EventIdle fires whenever a robot
 // needs its next order, so decide what the robot should do and issue one command.
 package main

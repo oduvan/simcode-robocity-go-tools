@@ -1,4 +1,4 @@
-// Wire envelopes + the per-event accumulator. Copied from the published SDK
+// Wire envelopes + the per-event accumulator. Copied from the client library
 // (github.com/oduvan/simcode-go, contract.go), minus the Redis-only subscribe
 // envelope. The Event view and the intent/accumulator batching are byte-identical
 // to the server contract, so the local run reproduces production intent ordering.
@@ -117,7 +117,7 @@ func makeCommand(cmd string, args ...any) command {
 }
 
 // intentEnvelope is CODE -> GAME. commands is always present; logs/store/memory
-// are omitted when empty. Mirrors the published SDK exactly.
+// are omitted when empty. Mirrors the client library exactly.
 type intentEnvelope struct {
 	City     string         `json:"city"`
 	Type     string         `json:"type"`

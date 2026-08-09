@@ -63,30 +63,30 @@ Options:
 | `--city SLUG` | city slug whose map seed to borrow (default: auto-detected from the git remote) |
 | `--server URL` | server base URL for engine download + seed lookup (default `https://simcode.lyabah.com`) |
 
-Your `main.go` is used **unchanged**: it `import`s the published SDK
+Your `main.go` is used **unchanged**: it `import`s the client library
 `github.com/oduvan/simcode-go`, registers `city.On(...)` handlers, and calls
-`city.Run()` — the tool swaps the SDK for a local, engine-backed copy (see below) and
+`city.Run()` — the tool swaps the client library for a local, engine-backed copy (see below) and
 drives the tick loop for you.
 
 ## How it runs your unchanged `main.go`
 
-Your `main.go` is `package main` and imports the **published** SDK — you can't import a
-`package main`, so the tool **runs** it (`go run`) with the SDK swapped for a local,
+Your `main.go` is `package main` and imports the **published** client library — you can't import a
+`package main`, so the tool **runs** it (`go run`) with the client library swapped for a local,
 engine-backed copy:
 
-1. The CLI **materializes an embedded copy** of the local SDK (same public API as
+1. The CLI **materializes an embedded copy** of the local client library (same public API as
    `github.com/oduvan/simcode-go`, but its runtime drives the **real engine** over
    cgo instead of Redis) into a temp dir, as a standalone module whose module path
-   **equals** the published SDK path.
+   **equals** the client library path.
 2. It writes a temporary **`go.work`** (via `GOWORK`) that `use`s both your project and
-   that local SDK. Because the local module's path matches the published one, the
+   that local client library. Because the local module's path matches the published one, the
    workspace **overrides** your `require github.com/oduvan/simcode-go …` with the
    local copy — **without editing your `go.mod`**, and it resolves offline.
 3. It runs `go run .` (with `CGO_ENABLED=1`) in your project. Your code compiles
    unchanged; `city.Run()` resolves + loads the engine `.so`, runs the local tick loop
    for N ticks, and prints the feed + SUMMARY (or JSON).
 
-The SDK source is **embedded in the binary**, so this works the same whether you `go
+The client library source is **embedded in the binary**, so this works the same whether you `go
 install`ed the tool or cloned the repo.
 
 ## Read the output

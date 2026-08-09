@@ -82,7 +82,7 @@ func main() {
 }
 
 // nearestOreSpot returns the closest discovered ore spot to (x,y) by Manhattan
-// distance. No SDK nearest() in Go — iterate World().Spots() and pick the min.
+// distance. No client library nearest() in Go — iterate World().Spots() and pick the min.
 func nearestOreSpot(city *sc.City, x, y float64) (int, int, bool) {
 	best := math.MaxFloat64
 	var bx, by int
