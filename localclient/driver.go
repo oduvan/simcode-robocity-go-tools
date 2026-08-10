@@ -237,7 +237,7 @@ func (c *City) publishState(m *worldMirror) {
 	vals[1] = m.worldJSON()
 	vals[2] = m.robotsJSON()
 	vals[3] = m.buildingsJSON()
-	vals[4] = m.tilesJSON()
+	vals[4] = m.spotsJSON()
 	vals[5] = m.discoveredJSON()
 	c.snap = decodeSnapshot(vals)
 }

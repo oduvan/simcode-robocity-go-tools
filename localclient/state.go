@@ -1,11 +1,32 @@
-// The live read model. Copied verbatim from the client library
-// (github.com/oduvan/simcode-go, state.go). Each top-level read (City.Robot /
-// Buildings / World / Base) decodes the same JSON the server writes to state.*
-// (game/core/contract/schema.go) — here produced in-process by the engine — so a
-// handle reflects the current tick when the handler runs.
+// The live read model, backed by Redis city.<id>.state.*. This is the Go port
+// of clients/python/simcode/_state.py. Each top-level read (City.Robot / Buildings /
+// World / Base) takes a fresh one-shot read of the state store and decodes the
+// same JSON the Python reader decodes (and that GAME writes, per
+// game/core/contract/schema.go).
+//
+// State store layout (each key is a plain JSON string, not a hash):
+//
+//	city.<id>.state.meta       {"tick","seq","city"}
+//	city.<id>.state.world      {"size":[w,h],"seed"}
+//	city.<id>.state.robots     [{"id","type","pos":[x,y],"facing","inventory",
+//	                            "state","command"}]
+//	city.<id>.state.buildings  [{"id","type","pos","status","storage",
+//	                            "spot"|"production"|"construction"}]
+//	city.<id>.state.spots      [[x,y,resource,remaining], ...]  (sparse: only cells
+//	                           that carry a deposit; remaining 0 = depleted)
+//	city.<id>.state.discovered [[y,x0,x1], ...]  per-row INCLUSIVE runs of revealed
+//	                           cells — a map is overwhelmingly contiguous, so this
+//	                           is a fraction of the size of one record per cell
 package simcode
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
+
+// ----------------------------------------------------------------------------
+// value views (mirror _state.py Store / Spot)
+// ----------------------------------------------------------------------------
 
 // Store is a multi-item resource bag with a shared capacity — used for both a
 // robot's carried inventory and a building's storage. It decodes the wire shape
@@ -82,6 +103,10 @@ type recipeView struct {
 	Ticks     int            `json:"ticks"`
 }
 
+// ----------------------------------------------------------------------------
+// raw decoded state (mirror of the JSON GAME writes)
+// ----------------------------------------------------------------------------
+
 type robotState struct {
 	ID        string      `json:"id"`
 	Type      string      `json:"type"`
@@ -101,14 +126,16 @@ type buildingState struct {
 	ID           string         `json:"id"`
 	Type         string         `json:"type"`
 	Pos          *[2]int        `json:"pos"`
+	W            int            `json:"w"`
+	H            int            `json:"h"`
 	Status       string         `json:"status"`
 	Progress     *float64       `json:"progress"`
 	Storage      *Store         `json:"storage"`
 	Spot         *Spot          `json:"spot"`
 	Production   map[string]any `json:"production"`
 	Construction map[string]any `json:"construction"`
-	Level        int            `json:"level"` // Base only: the objective level (1+)
-	Quest        map[string]any `json:"quest"` // Base only: {required, progress}
+	Level        int            `json:"level"` // Base only: the objective level
+	Quest        map[string]any `json:"quest"` // Base only: {required,progress} raw bag
 	// Supply-chain (#5): processor input/output pools, its fixed recipe, and the
 	// recoverable materials store while decommissioning. All nil on non-processors.
 	Input       *Store      `json:"input"`
@@ -122,11 +149,49 @@ type buildingState struct {
 	Unlocks   []string `json:"unlocks"`
 }
 
+// spotState is one entry of state.spots, on the wire as [x, y, resource, remaining].
+type spotState struct {
+	X, Y      int
+	Resource  string
+	Remaining int
+}
+
+func (s *spotState) UnmarshalJSON(b []byte) error {
+	var a []any
+	if err := json.Unmarshal(b, &a); err != nil {
+		return err
+	}
+	if len(a) != 4 {
+		return errors.New("spot entry: want [x,y,resource,remaining]")
+	}
+	x, _ := a[0].(float64)
+	y, _ := a[1].(float64)
+	res, _ := a[2].(string)
+	rem, _ := a[3].(float64)
+	s.X, s.Y, s.Resource, s.Remaining = int(x), int(y), res, int(rem)
+	return nil
+}
+
+// runState is one entry of state.discovered: [y, x0, x1] inclusive.
+type runState struct{ Y, X0, X1 int }
+
+func (r *runState) UnmarshalJSON(b []byte) error {
+	var a [3]int
+	if err := json.Unmarshal(b, &a); err != nil {
+		return err
+	}
+	r.Y, r.X0, r.X1 = a[0], a[1], a[2]
+	return nil
+}
+
+// tileState is the SYNTHESIZED per-cell view the client API still exposes (r.here,
+// world.Spots). It is no longer a wire type: terrain is a module constant and the
+// spot is looked up from the sparse list.
 type tileState struct {
-	X       int    `json:"x"`
-	Y       int    `json:"y"`
-	Terrain string `json:"terrain"`
-	Spot    *Spot  `json:"spot"`
+	X       int
+	Y       int
+	Terrain string
+	Spot    *Spot
 }
 
 type metaState struct {
@@ -136,24 +201,27 @@ type metaState struct {
 }
 
 type worldState struct {
-	Size    *[2]int `json:"size"`
-	Origin  *[2]int `json:"origin"`
+	Size    *[2]int `json:"size"`   // discovered bounding-box extent (endless world)
+	Origin  *[2]int `json:"origin"` // min (x,y) of the discovered region
 	Seed    int64   `json:"seed"`
 	Endless bool    `json:"endless"`
 }
 
-// snapshot is a one-shot parse of state.* for a single read, indexed by id and "x,y".
+// snapshot is a one-shot parse of state.* for a single read, indexed by id and
+// "x,y" — the Go equivalent of _state.StateReader.
 type snapshot struct {
 	meta       metaState
 	world      worldState
 	robots     map[string]robotState
 	buildings  map[string]buildingState
-	tiles      map[string]tileState
-	discovered string
+	spots      map[string]spotState
+	discovered map[string]bool // expanded from runs; "x,y"
+	discRaw    string          // the raw runs doc, exposed by World.Discovered()
 }
 
-// decodeSnapshot builds a snapshot from the raw values in stateKeys order (meta,
-// world, robots, buildings, tiles, discovered). Missing keys parse to zero values.
+// decodeSnapshot builds a snapshot from the raw values MGET'd in stateKeys
+// order (meta, world, robots, buildings, tiles, discovered). Missing keys parse
+// to zero values, matching the Python reader's defaults.
 func decodeSnapshot(vals []string) snapshot {
 	get := func(i int) string {
 		if i < len(vals) {
@@ -162,9 +230,10 @@ func decodeSnapshot(vals []string) snapshot {
 		return ""
 	}
 	s := snapshot{
-		robots:    map[string]robotState{},
-		buildings: map[string]buildingState{},
-		tiles:     map[string]tileState{},
+		robots:     map[string]robotState{},
+		buildings:  map[string]buildingState{},
+		spots:      map[string]spotState{},
+		discovered: map[string]bool{},
 	}
 	if v := get(0); v != "" {
 		_ = json.Unmarshal([]byte(v), &s.meta)
@@ -193,14 +262,24 @@ func decodeSnapshot(vals []string) snapshot {
 		}
 	}
 	if v := get(4); v != "" {
-		var ts []tileState
-		if json.Unmarshal([]byte(v), &ts) == nil {
-			for _, t := range ts {
-				s.tiles[tileKey(t.X, t.Y)] = t
+		var sp []spotState
+		if json.Unmarshal([]byte(v), &sp) == nil {
+			for _, t := range sp {
+				s.spots[tileKey(t.X, t.Y)] = t
 			}
 		}
 	}
-	s.discovered = get(5)
+	s.discRaw = get(5)
+	if s.discRaw != "" {
+		var runs []runState
+		if json.Unmarshal([]byte(s.discRaw), &runs) == nil {
+			for _, r := range runs {
+				for x := r.X0; x <= r.X1; x++ {
+					s.discovered[tileKey(x, r.Y)] = true
+				}
+			}
+		}
+	}
 	return s
 }
 
@@ -209,6 +288,7 @@ func tileKey(x, y int) string {
 }
 
 func itoa(n int) string {
+	// small, allocation-light int->string (n is a grid coord)
 	if n == 0 {
 		return "0"
 	}
@@ -230,14 +310,35 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
+// tileAt synthesizes the per-cell view from the runs + sparse spots. A cell exists
+// iff it has been revealed; its terrain is the module constant.
 func (s snapshot) tileAt(x, y int) (tileState, bool) {
-	t, ok := s.tiles[tileKey(x, y)]
-	return t, ok
+	k := tileKey(x, y)
+	if !s.discovered[k] {
+		return tileState{}, false
+	}
+	t := tileState{X: x, Y: y, Terrain: TerrainGround}
+	if sp, ok := s.spots[k]; ok {
+		t.Spot = &Spot{Resource: sp.Resource, Remaining: sp.Remaining}
+	}
+	return t, true
 }
 
 func (s snapshot) buildingAt(x, y int) *buildingState {
 	for id, b := range s.buildings {
-		if b.Pos != nil && b.Pos[0] == x && b.Pos[1] == y {
+		if b.Pos == nil {
+			continue
+		}
+		// Pos is the min corner; the building covers its whole w×h footprint, so
+		// (x,y) hits it if it lies anywhere inside that box.
+		w, h := b.W, b.H
+		if w < 1 {
+			w = 1
+		}
+		if h < 1 {
+			h = 1
+		}
+		if b.Pos[0] <= x && x < b.Pos[0]+w && b.Pos[1] <= y && y < b.Pos[1]+h {
 			bb := s.buildings[id]
 			return &bb
 		}

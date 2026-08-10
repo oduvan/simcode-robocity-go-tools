@@ -1,11 +1,14 @@
-// Read-model handles + command methods. Copied verbatim from the client library
-// (github.com/oduvan/simcode-go, handles.go). A handle is a thin view over a
+// Read-model handles + command methods. Ported from clients/python/simcode/_state.py
+// (RobotHandle / BuildingHandle / World / Here). A handle is a thin view over a
 // freshly-read snapshot; commands issued through it are *recorded* on the city's
-// active accumulator (data-in / intents-out), not executed directly. The local
-// driver later feeds the accumulated intents to the in-process engine.
+// active accumulator (data-in / intents-out), not executed directly.
 package simcode
 
-import "math"
+import (
+	"fmt"
+	"math"
+	"sort"
+)
 
 // roundCell rounds a continuous coordinate to its integer grid cell.
 func roundCell(v float64) int { return int(math.Round(v)) }
@@ -22,7 +25,8 @@ type Robot struct {
 	data robotState
 }
 
-// Position returns the robot's continuous position (0,0 if unknown).
+// Position returns the robot's continuous position (0,0 if unknown). Robots fly,
+// so coordinates are floats. Two return values match `x, y := r.Position()`.
 func (r *Robot) Position() (float64, float64) {
 	if r.data.Pos != nil {
 		return r.data.Pos[0], r.data.Pos[1]
@@ -30,7 +34,7 @@ func (r *Robot) Position() (float64, float64) {
 	return 0, 0
 }
 
-// Cell returns the robot's rounded integer cell.
+// Cell returns the robot's rounded integer cell (where it interacts with buildings).
 func (r *Robot) Cell() (int, int) {
 	x, y := r.Position()
 	return roundCell(x), roundCell(y)
@@ -48,7 +52,8 @@ func (r *Robot) State() string { return r.data.State }
 // Command is the robot's active command name, if any.
 func (r *Robot) Command() string { return r.data.Command }
 
-// Energy is the robot's flight battery (0 if unknown).
+// Energy is the robot's flight battery (0 if unknown). Flying spends it; running
+// out mid-flight destroys the robot. Recharge with Charge on a Flying Station.
 func (r *Robot) Energy() float64 {
 	if r.data.Energy != nil {
 		return *r.data.Energy
@@ -110,10 +115,12 @@ func (r *Robot) emit(cmd string, args ...any) *Robot {
 	return r
 }
 
-// MoveTo flies the robot in a straight line to (x, y).
+// MoveTo flies the robot in a straight line to (x, y). Flight ignores terrain and
+// occupancy, spends energy proportional to distance, and reveals the map en route.
 func (r *Robot) MoveTo(x, y float64) *Robot { return r.emit(CmdMoveTo, x, y) }
 
 // Charge recharges the robot's battery while it is parked on a Flying Station.
+// It holds the robot until full (charge_complete) — explicit only.
 func (r *Robot) Charge() *Robot { return r.emit(CmdCharge) }
 
 // Repair (Mechanic only) starts a repair process on the worn building on the
@@ -154,7 +161,8 @@ func (r *Robot) Log(msg string) *Robot {
 	return r
 }
 
-// Memory returns this robot's in-process scratch dict.
+// Memory returns this robot's in-process scratch dict (live for the process,
+// reset on a code reload). Use SetMemory to persist changes onto the intent.
 func (r *Robot) Memory() map[string]any {
 	return r.city.robotMemory(r.ID)
 }
@@ -170,7 +178,8 @@ func (r *Robot) SetMemory(mem map[string]any) *Robot {
 // Building
 // ----------------------------------------------------------------------------
 
-// Building is a handle to one building.
+// Building is a handle to one building: read its state and (for a Flying
+// Station) issue robot-production commands.
 type Building struct {
 	ID   string
 	city *City
@@ -186,6 +195,20 @@ func (b *Building) Position() (int, int) {
 		return b.data.Pos[0], b.data.Pos[1]
 	}
 	return 0, 0
+}
+
+// Footprint returns the building's (w, h) cell size (min 1×1). Position is the
+// min corner; the building covers every cell in [x,x+w)×[y,y+h) and a robot on
+// ANY of them can interact with it.
+func (b *Building) Footprint() (w, h int) {
+	w, h = b.data.W, b.data.H
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	return w, h
 }
 
 // Status is the building's status (constructing|active).
@@ -223,17 +246,20 @@ func (b *Building) Recipe() *Recipe {
 // Spot is the resource deposit under the building, if any.
 func (b *Building) Spot() *Spot { return b.data.Spot }
 
-// Production is a Flying Station's robot-production status (raw attribute bag).
+// Production is a Flying Station's robot-production status (raw attribute bag:
+// active / progress / queued). Nil on other buildings.
 func (b *Building) Production() map[string]any { return b.data.Production }
 
 // Construction is the in-progress recipe on a constructing building (raw bag).
 func (b *Building) Construction() map[string]any { return b.data.Construction }
 
-// Level is the Base's current objective level (1+). 0 for non-Base buildings.
+// Level is the Base's current level — the game objective (starts at 1; 0 on a
+// non-Base building). Deliver the quest resources to the Base to raise it.
 func (b *Building) Level() int { return b.data.Level }
 
-// Quest is the Base's current quest: {required:{ore,metal}, progress:{ore,metal}}.
-// Nil for non-Base buildings.
+// Quest is the Base's current quest (raw bag): {"required":{ore,metal},
+// "progress":{ore,metal}} where progress = min(stored, required). Nil on a
+// non-Base building.
 func (b *Building) Quest() map[string]any { return b.data.Quest }
 
 // Condition is a wearing T2/T3 processor's condition meter (0-100); productivity
@@ -276,8 +302,7 @@ func (r *Recipe) Ticks() int { return r.ticks }
 // Base's level (blocked reason level_required). An empty robotType defaults to
 // RobotBuilder (the starting class); n < 1 clamps to 1. #42. The robot types are
 // RobotBuilder / RobotHauler / RobotScout / RobotMechanic / RobotHeavyHauler /
-// RobotRanger. Each queued unit consumes the robot recipe from this station's own
-// production store and spawns at the station (empty, full energy).
+// RobotRanger.
 func (b *Building) BuildRobot(robotType string, n int) *Building {
 	if robotType == "" {
 		robotType = RobotBuilder
@@ -289,9 +314,8 @@ func (b *Building) BuildRobot(robotType string, n int) *Building {
 	return b
 }
 
-// Cancel stops THIS Flying Station's production queue (an in-progress unit still
-// finishes).
-func (b *Building) Cancel() *Building {
+// CancelProduction cancels THIS Flying Station's production queue.
+func (b *Building) CancelProduction() *Building {
 	b.city.acc.addCommand(b.ID, makeCommand(CmdBaseCancel))
 	return b
 }
@@ -309,7 +333,8 @@ func (b *Building) Destroy() *Building {
 // World
 // ----------------------------------------------------------------------------
 
-// World is the read-only world header + revealed cells, plus world-scoped build orders.
+// World is the read-only world header + revealed cells, plus world-scoped build
+// orders. The world is endless — Size/Origin describe only the discovered region.
 type World struct {
 	snap snapshot
 	city *City
@@ -321,7 +346,8 @@ func (w World) Tick() int64 { return w.snap.meta.Tick }
 // Seq is the monotonic state sequence number.
 func (w World) Seq() int64 { return w.snap.meta.Seq }
 
-// Size returns the discovered bounding-box extent (w, h); (0,0) if nothing revealed.
+// Size returns the discovered bounding-box extent (w, h); (0,0) if nothing
+// revealed. The world itself is endless — this is a viewport hint only.
 func (w World) Size() (int, int) {
 	if w.snap.world.Size != nil {
 		return w.snap.world.Size[0], w.snap.world.Size[1]
@@ -343,7 +369,9 @@ func (w World) Endless() bool { return w.snap.world.Endless }
 // Seed is the world generation seed.
 func (w World) Seed() int64 { return w.snap.world.Seed }
 
-// Build places a construction site of the given type at (x, y) — a world-scoped order.
+// Build places a construction site of the given type at (x, y) — a world-scoped
+// order, not tied to any robot. Robots haul resources to it and it self-completes
+// once supplied. Type is one of BuildingMining / BuildingStorage / BuildingFlyingStation.
 func (w World) Build(buildingType string, x, y int) World {
 	if w.city != nil {
 		w.city.acc.addCommand("world", makeCommand(CmdBuild, buildingType, x, y))
@@ -362,8 +390,29 @@ func (w World) Destroy(x, y int) World {
 	return w
 }
 
-// Discovered is the raw revealed-cell data (a JSON list of [x,y]).
-func (w World) Discovered() string { return w.snap.discovered }
+// Discovered is the raw revealed-cell document GAME writes: per-row INCLUSIVE runs
+// as [[y,x0,x1], ...]. Runs rather than one entry per cell — a map is overwhelmingly
+// contiguous, so this stays small as the city explores. Use DiscoveredCells for the
+// expanded list.
+func (w World) Discovered() string { return w.snap.discRaw }
+
+// DiscoveredCells is every revealed cell, expanded from the runs.
+func (w World) DiscoveredCells() [][2]int {
+	out := make([][2]int, 0, len(w.snap.discovered))
+	for k := range w.snap.discovered {
+		var x, y int
+		if _, err := fmt.Sscanf(k, "%d,%d", &x, &y); err == nil {
+			out = append(out, [2]int{x, y})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][1] != out[j][1] {
+			return out[i][1] < out[j][1]
+		}
+		return out[i][0] < out[j][0]
+	})
+	return out
+}
 
 // Cell is a revealed tile.
 type Cell struct {
@@ -375,9 +424,10 @@ type Cell struct {
 // Spots returns every revealed cell that holds a resource spot.
 func (w World) Spots() []Cell {
 	var out []Cell
-	for _, t := range w.snap.tiles {
-		if t.Spot != nil {
-			out = append(out, Cell{X: t.X, Y: t.Y, Terrain: t.Terrain, Spot: t.Spot})
+	for _, t := range w.snap.spots {
+		if true {
+			out = append(out, Cell{X: t.X, Y: t.Y, Terrain: TerrainGround,
+				Spot: &Spot{Resource: t.Resource, Remaining: t.Remaining}})
 		}
 	}
 	return out

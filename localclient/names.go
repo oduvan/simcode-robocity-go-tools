@@ -1,7 +1,7 @@
-// Frozen event / command / enum names — the Go mirror of game/core/contract.
-// Copied verbatim from the client library (github.com/oduvan/simcode-go) so
-// user code that references sc.EventIdle, sc.CmdMoveTo, sc.BuildingMining, etc.
-// compiles unchanged against this local, engine-backed client library.
+// Frozen event / command / enum names — the Go mirror of game/core/contract
+// (names.go + schema.go) and clients/python/simcode/_wire.py. Keep all three in
+// lockstep: a change here must change the engine contract and the Python mirror
+// in the same commit.
 package simcode
 
 // Envelope type tags (the "type" field on every message).
@@ -14,7 +14,7 @@ const (
 	TypeSnapshot  = "snapshot"
 )
 
-// Event names (GAME -> script).
+// Event names (GAME -> script). Mirror of contract.AllEvents.
 const (
 	EventSpawn                = "spawn"
 	EventTick                 = "tick"
@@ -60,7 +60,7 @@ var AllEvents = []string{
 	EventRobotExpired, EventMaintenanceNeeded, EventBuildingStopped, EventRepairComplete,
 }
 
-// Command names (script -> GAME).
+// Command names (script -> GAME). Mirror of contract.AllCommands.
 const (
 	CmdMoveTo     = "move_to"
 	CmdPickUp     = "pick_up"
@@ -116,9 +116,7 @@ const (
 	StateIdle      = "idle"
 	StateMoving    = "moving"
 	StateCharging  = "charging"
-	StateHauling   = "hauling"
 	StateRepairing = "repairing" // #42: a Mechanic running a repair on a worn building
-	StateBlocked   = "blocked"
 )
 
 // Building status enum.
@@ -128,19 +126,28 @@ const (
 	StatusDecommissioning = "decommissioning" // #5: torn down, materials recoverable
 )
 
-// Well-known state KV sub-keys (mirror of the runtime's _STATE_KEYS).
+// Well-known state KV sub-keys GAME writes (mirror of contract State* + the
+// Python runtime's _STATE_KEYS). These are the keys the read model GETs.
 const (
-	StateMeta       = "meta"
-	StateWorld      = "world"
-	StateRobots     = "robots"
-	StateBuildings  = "buildings"
-	StateTiles      = "tiles"
+	StateMeta      = "meta"
+	StateWorld     = "world"
+	StateRobots    = "robots"
+	StateBuildings = "buildings"
+	StateSpots     = "spots"
+)
+
+// TerrainGround is the only terrain Robot City generates in v1. It is deliberately
+// NOT on the wire — it used to be repeated on every revealed cell, 17% of the map
+// payload — so the client supplies it. If terrain ever varies it returns as a doc.
+const TerrainGround = "ground"
+
+const (
 	StateStats      = "stats"
 	StateDiscovered = "discovered"
 )
 
-// stateKeys is the order the read-model snapshot is assembled in (matches the
-// client library / Python runtime _STATE_KEYS; order matters for decodeSnapshot).
+// stateKeys is the set MGET'd to build a read-model snapshot. Mirrors the
+// Python runtime's _STATE_KEYS tuple exactly (order matters for the MGET zip).
 var stateKeys = []string{
-	StateMeta, StateWorld, StateRobots, StateBuildings, StateTiles, StateDiscovered,
+	StateMeta, StateWorld, StateRobots, StateBuildings, StateSpots, StateDiscovered,
 }

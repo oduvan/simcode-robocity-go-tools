@@ -1,7 +1,8 @@
 // The world mirror: the full world as maps, updated by applying each per-tick delta
 // field-wise — a direct port of the Python tool's WorldMirror (simcode/_local.py),
 // which itself mirrors the browser reducer. robots/buildings merge by id on their
-// nested objects; tiles/discovered accumulate; `removed` ids drop out (a removed
+// nested objects; the map accumulates (discovered RUNS union in, spots upsert by
+// cell); `removed` ids drop out (a removed
 // robot => destroyed++). The first delta (full-from-empty) establishes the world;
 // later ones patch it. The mirror is then projected into the client library's state.* JSON so
 // the unchanged decodeSnapshot builds the read model (see driver.publishState).
@@ -9,7 +10,6 @@ package simcode
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 )
 
@@ -21,7 +21,7 @@ type worldMirror struct {
 
 	robots     map[string]map[string]any
 	buildings  map[string]map[string]any
-	tiles      map[string]map[string]any // "x,y" -> tile
+	spots      map[[2]int][]any // (x,y) -> [x,y,resource,remaining]
 	discovered map[[2]int]struct{}
 	stats      map[string]any
 
@@ -35,7 +35,7 @@ func newWorldMirror(city string, seed int64) *worldMirror {
 		seq:        -1,
 		robots:     map[string]map[string]any{},
 		buildings:  map[string]map[string]any{},
-		tiles:      map[string]map[string]any{},
+		spots:      map[[2]int][]any{},
 		discovered: map[[2]int]struct{}{},
 		stats:      map[string]any{},
 	}
@@ -76,24 +76,28 @@ func (m *worldMirror) apply(raw json.RawMessage) {
 		m.buildings[id] = mergeBuilding(m.buildings[id], patch)
 	}
 
-	for _, e := range toSlice(d["tiles"]) {
-		t, _ := e.(map[string]any)
-		x, okx := t["x"]
-		y, oky := t["y"]
-		if !okx || !oky {
+	// Spots are UPSERTS keyed by cell: [x, y, resource, remaining]. remaining 0 means
+	// depleted, not gone, so the entry stays.
+	for _, e := range toSlice(d["spots"]) {
+		sp := toSlice(e)
+		if len(sp) != 4 {
 			continue
 		}
-		ix, iy := int(toInt(x)), int(toInt(y))
-		m.tiles[fmt.Sprintf("%d,%d", ix, iy)] = t
-		m.discovered[[2]int{ix, iy}] = struct{}{}
+		x, y := int(toInt(sp[0])), int(toInt(sp[1]))
+		m.spots[[2]int{x, y}] = sp
 	}
 
+	// Discovered arrives as runs to ADD: [y, x0, x1], INCLUSIVE at both ends. This is
+	// a union, never a replacement — deltas are incremental.
 	for _, e := range toSlice(d["discovered"]) {
-		xy := toSlice(e)
-		if len(xy) < 2 {
+		run := toSlice(e)
+		if len(run) != 3 {
 			continue
 		}
-		m.discovered[[2]int{int(toInt(xy[0])), int(toInt(xy[1]))}] = struct{}{}
+		y, x0, x1 := int(toInt(run[0])), int(toInt(run[1])), int(toInt(run[2]))
+		for x := x0; x <= x1; x++ {
+			m.discovered[[2]int{x, y}] = struct{}{}
+		}
 	}
 
 	if removed, ok := d["removed"].(map[string]any); ok {
@@ -261,20 +265,54 @@ func (m *worldMirror) worldJSON() string {
 
 func (m *worldMirror) robotsJSON() string    { return marshalString(sortedValues(m.robots)) }
 func (m *worldMirror) buildingsJSON() string { return marshalString(sortedValues(m.buildings)) }
-func (m *worldMirror) tilesJSON() string     { return marshalString(sortedValues(m.tiles)) }
 
-func (m *worldMirror) discoveredJSON() string {
-	cells := make([][2]int, 0, len(m.discovered))
-	for c := range m.discovered {
+// spotsJSON re-encodes the sparse deposit list, ordered for determinism.
+func (m *worldMirror) spotsJSON() string {
+	cells := make([][2]int, 0, len(m.spots))
+	for c := range m.spots {
 		cells = append(cells, c)
 	}
 	sort.Slice(cells, func(i, j int) bool {
-		if cells[i][0] != cells[j][0] {
-			return cells[i][0] < cells[j][0]
+		if cells[i][1] != cells[j][1] {
+			return cells[i][1] < cells[j][1]
 		}
-		return cells[i][1] < cells[j][1]
+		return cells[i][0] < cells[j][0]
 	})
-	return marshalString(cells)
+	out := make([][]any, 0, len(cells))
+	for _, c := range cells {
+		out = append(out, m.spots[c])
+	}
+	return marshalString(out)
+}
+
+// discoveredJSON re-encodes the revealed set as per-row inclusive runs [y, x0, x1] —
+// the same shape the live wire carries, so the unchanged decodeSnapshot parses it.
+func (m *worldMirror) discoveredJSON() string {
+	byRow := map[int][]int{}
+	for c := range m.discovered {
+		byRow[c[1]] = append(byRow[c[1]], c[0])
+	}
+	rows := make([]int, 0, len(byRow))
+	for y := range byRow {
+		rows = append(rows, y)
+	}
+	sort.Ints(rows)
+	out := [][3]int{}
+	for _, y := range rows {
+		xs := byRow[y]
+		sort.Ints(xs)
+		start, prev := xs[0], xs[0]
+		for _, x := range xs[1:] {
+			if x == prev+1 {
+				prev = x
+				continue
+			}
+			out = append(out, [3]int{y, start, prev})
+			start, prev = x, x
+		}
+		out = append(out, [3]int{y, start, prev})
+	}
+	return marshalString(out)
 }
 
 // sortedValues returns the map values ordered by key (deterministic re-encoding).
