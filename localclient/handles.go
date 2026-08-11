@@ -260,7 +260,19 @@ func (b *Building) Level() int { return b.data.Level }
 // Quest is the Base's current quest (raw bag): {"required":{ore,metal},
 // "progress":{ore,metal}} where progress = min(stored, required). Nil on a
 // non-Base building.
+// Quest is the Base's current requirement: {required, progress}, each an item map.
+//
+// The ladder is ENDLESS and generated from the world seed (#64), so do not hardcode
+// what a level wants — read it and react. Different seeds ask for different things.
 func (b *Building) Quest() map[string]any { return b.data.Quest }
+
+// NextQuest previews the level above the current one — {level, required, unlocks} —
+// or nil while it is still hidden.
+//
+// The ladder is meant to be a discovery, so the next rung is not published until you
+// are close to finishing the current one. nil therefore means "not revealed yet",
+// NOT "there is nothing above": the ladder never ends.
+func (b *Building) NextQuest() map[string]any { return b.data.NextQuest }
 
 // Condition is a wearing T2/T3 processor's condition meter (0-100); productivity
 // scales with it and it stops producing at 0. Returns nil on buildings that never
@@ -269,6 +281,8 @@ func (b *Building) Condition() *int { return b.data.Condition }
 
 // Unlocks is the set of building + robot types buildable at the Base's current
 // level (nil on non-Base buildings, or a Base whose state omits it). #42.
+// Unlocks is what is buildable at the Base's current level. Which level grants what
+// is generated per world (#64), so check this rather than assuming a fixed ladder.
 func (b *Building) Unlocks() []string { return b.data.Unlocks }
 
 // Recipe is a read-only view of a processor building's fixed conversion.

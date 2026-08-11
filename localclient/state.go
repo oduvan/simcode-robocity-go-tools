@@ -134,8 +134,9 @@ type buildingState struct {
 	Spot         *Spot          `json:"spot"`
 	Production   map[string]any `json:"production"`
 	Construction map[string]any `json:"construction"`
-	Level        int            `json:"level"` // Base only: the objective level
-	Quest        map[string]any `json:"quest"` // Base only: {required,progress} raw bag
+	Level        int            `json:"level"`      // Base only: the objective level
+	Quest        map[string]any `json:"quest"`      // Base only: {required,progress} raw bag
+	NextQuest    map[string]any `json:"next_quest"` // Base only: preview of the next level, once revealed
 	// Supply-chain (#5): processor input/output pools, its fixed recipe, and the
 	// recoverable materials store while decommissioning. All nil on non-processors.
 	Input       *Store      `json:"input"`
