@@ -25,7 +25,16 @@ type worldMirror struct {
 	discovered map[[2]int]struct{}
 	stats      map[string]any
 
+	// Robots that LEFT the world over the run. A removal alone does not say WHY,
+	// and the two reasons are opposites (#73 / forum post 23):
+	//   expired   — flew past its lifespan. Inevitable, expected, replace it.
+	//   destroyed — battery hit 0 mid-flight. Avoidable; the controller is wrong.
+	// The reason rides only on the EVENT, so the driver counts those two and sets
+	// these; `removed` is the raw removal count, kept so an unattributable removal
+	// can be shown as such instead of being mislabelled as either.
+	expired   int
 	destroyed int
+	removed   int
 }
 
 func newWorldMirror(city string, seed int64) *worldMirror {
@@ -105,10 +114,10 @@ func (m *worldMirror) apply(raw json.RawMessage) {
 			if id, _ := e.(string); id != "" {
 				if _, existed := m.robots[id]; existed {
 					delete(m.robots, id)
-					// In this module a robot only leaves the world by being destroyed
-					// (out of energy mid-flight), so a removed robot id is a faithful
-					// destroyed signal, independent of subscriptions.
-					m.destroyed++
+					// Count the departure; the REASON comes from the event stream
+					// (see the counter note on worldMirror) — a removal on its own
+					// cannot tell end-of-life from an energy death.
+					m.removed++
 				}
 			}
 		}
@@ -353,19 +362,26 @@ func (m *worldMirror) summary() summaryData {
 	metalMined, metalStored := statPair(m.stats, "metal")
 	spots := int(toInt(m.stats["spots_found"]))
 
+	unattributed := m.removed - m.expired - m.destroyed
+	if unattributed < 0 {
+		unattributed = 0
+	}
+
 	return summaryData{
-		FinalTick:       m.tick,
-		Robots:          len(m.robots),
-		RobotsDestroyed: m.destroyed,
-		Buildings:       len(m.buildings),
-		BuildingsByType: byType,
-		OreMined:        oreMined,
-		OreStored:       oreStored,
-		MetalMined:      metalMined,
-		MetalStored:     metalStored,
-		SpotsFound:      spots,
-		DiscoveredCells: len(m.discovered),
-		BaseLevel:       baseLevel,
+		FinalTick:          m.tick,
+		Robots:             len(m.robots),
+		RobotsExpired:      m.expired,
+		RobotsDestroyed:    m.destroyed,
+		RobotsUnattributed: unattributed,
+		Buildings:          len(m.buildings),
+		BuildingsByType:    byType,
+		OreMined:           oreMined,
+		OreStored:          oreStored,
+		MetalMined:         metalMined,
+		MetalStored:        metalStored,
+		SpotsFound:         spots,
+		DiscoveredCells:    len(m.discovered),
+		BaseLevel:          baseLevel,
 	}
 }
 

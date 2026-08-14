@@ -6,6 +6,7 @@
 package simcode
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -35,6 +36,29 @@ type City struct {
 	json  bool
 	quiet bool
 
+	// Which world this run uses, and where it came from (#73 req 2). cityConfig
+	// is the per-city options blob; worldOrigin is the human sentence naming the
+	// source ("city 'x' on https://…", "explicit --seed 42", "the canonical map").
+	// Both are reported in the summary and in --json so a substituted world cannot
+	// pass as a normal run.
+	cityConfig  map[string]any
+	worldOrigin string
+	worldStart  string
+	moduleType  string
+
+	// Resuming a running city (#73 req 1), read from the CLI's resume bundle.
+	// mapState is the city's saved world envelope, handed to the engine as its
+	// map state so it continues at saveTick+1 with every robot's in-flight
+	// command intact. initialStore is the city-wide SAVED values, which live
+	// outside the world — resuming without them gives a city that looks right and
+	// behaves wrong. prime is the display snapshot that seeds the read model,
+	// which is needed because a restored engine reports only incremental deltas.
+	mapState     json.RawMessage
+	initialStore map[string]any
+	prime        json.RawMessage
+	saveTick     int64
+	resumed      bool
+
 	// handler panics, captured for local debugging (isolated like the server,
 	// but surfaced instead of swallowed — the whole point of testing locally).
 	errors []handlerError
@@ -51,7 +75,7 @@ type handlerError struct {
 // 500 ticks, city "local". New never fails and does NOT touch the engine (the engine
 // .so is resolved + loaded lazily in Run), so user code can write `city := sc.New()`.
 func New() *City {
-	return &City{
+	c := &City{
 		handlers:    map[string][]Handler{},
 		acc:         newAccumulator(),
 		storeState:  map[string]any{},
@@ -61,7 +85,67 @@ func New() *City {
 		seed:        envInt64("ROBOCITY_SIM_SEED", engine.CanonicalSeed),
 		json:        os.Getenv("ROBOCITY_SIM_JSON") == "1",
 		quiet:       os.Getenv("ROBOCITY_SIM_QUIET") == "1",
+		cityConfig:  envJSONMap("ROBOCITY_SIM_CONFIG"),
+		worldOrigin: envOr("ROBOCITY_SIM_WORLD_ORIGIN", ""),
+		worldStart:  envOr("ROBOCITY_SIM_WORLD_START", "fresh world at tick 0"),
+		moduleType:  envOr("ROBOCITY_SIM_TYPE", ""),
 	}
+	c.loadResumeBundle(os.Getenv("ROBOCITY_SIM_RESUME"))
+	return c
+}
+
+// resumeBundle mirrors the document the CLI writes for a --from-live run. It
+// travels through a FILE, not an env var: a saved world is hundreds of kilobytes
+// and Linux caps one env string at 128 KiB.
+type resumeBundle struct {
+	Map      json.RawMessage `json:"map"`
+	Store    json.RawMessage `json:"store"`
+	Prime    json.RawMessage `json:"prime"`
+	SaveTick int64           `json:"save_tick"`
+}
+
+// loadResumeBundle reads the CLI's resume file, if one was written. A malformed
+// or unreadable bundle is FATAL: silently continuing would run a fresh world
+// while the banner promised the city's current state — exactly the substitution
+// this ticket exists to stop.
+func (c *City) loadResumeBundle(path string) {
+	if path == "" {
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: could not read the resumed world (%s): %v\n", path, err)
+		os.Exit(2)
+	}
+	var b resumeBundle
+	if err := json.Unmarshal(raw, &b); err != nil {
+		fmt.Fprintf(os.Stderr, "error: the resumed world is unreadable: %v\n", err)
+		os.Exit(2)
+	}
+	if len(b.Map) == 0 {
+		fmt.Fprintln(os.Stderr, "error: the resumed world carries no saved state")
+		os.Exit(2)
+	}
+	c.mapState, c.prime, c.saveTick, c.resumed = b.Map, b.Prime, b.SaveTick, true
+	if len(b.Store) > 0 {
+		var store map[string]any
+		if err := json.Unmarshal(b.Store, &store); err == nil {
+			c.initialStore = store
+		}
+	}
+}
+
+// envJSONMap decodes a JSON object from an env var, or nil when unset/unusable.
+func envJSONMap(key string) map[string]any {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 // On registers an event handler. Multiple handlers per event fire in

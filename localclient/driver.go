@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/oduvan/simcode-robocity-go-tools/localclient/engine"
 	"github.com/oduvan/simcode-robocity-go-tools/localclient/enginedl"
@@ -37,10 +38,21 @@ type feedLine struct {
 // summaryData is the end-of-run scorecard, computed from the mirror (+ its running
 // stats). It replaces the old in-process engine's SummaryData.
 type summaryData struct {
-	FinalTick       int64
-	Robots          int
-	RobotsDestroyed int
-	Buildings       int
+	FinalTick int64
+	Robots    int
+	// #73 / forum post 23: end-of-life is NOT failure, so it is NOT the same
+	// figure. RobotsExpired = flew past its lifespan (inevitable — build
+	// replacements). RobotsDestroyed = battery hit 0 mid-flight (avoidable — the
+	// controller mis-budgeted energy). Only the second means something is wrong.
+	RobotsExpired      int
+	RobotsDestroyed    int
+	RobotsUnattributed int
+	Buildings          int
+	// The engine's OWN counts, from the delta's stats. They are authoritative;
+	// the Robots/Buildings above are what the read model (and so the handlers)
+	// could see. On a resumed run those two can disagree — see readModelDrift.
+	EngineRobots    int
+	EngineBuildings int
 	BuildingsByType map[string]int
 	OreMined        int
 	OreStored       int
@@ -58,7 +70,24 @@ type summaryData struct {
 type tickConfig struct {
 	City string `json:"city"`
 	Seed int64  `json:"seed"`
+	// Type selects the game module. A resumed city states its own type, so a save
+	// is never restored by the wrong module's rules.
+	Type string `json:"type,omitempty"`
+	// Config is the PER-CITY options blob (resource_intensity / starting_fleet /
+	// seed …). Borrowing a city's seed without its config gave you that city's MAP
+	// but not its WORLD — a city created with starting_fleet 5 ran locally with the
+	// module default. The Python tool has carried it since #50; this one now does
+	// too, so the two languages test the same world.
+	Config map[string]any `json:"config,omitempty"`
 }
+
+// End-of-life events the runner always asks the engine for, even when the
+// controller subscribes to neither, so the summary can report end-of-life and
+// energy-death as separate figures.
+const (
+	lifecycleExpired   = EventRobotExpired
+	lifecycleDestroyed = EventRobotDestroyed
+)
 
 // tickRequest is the EngineTick request. Map embeds the previous call's new_map
 // (nil ⇒ marshals as JSON null ⇒ the engine's first call, generating the world).
@@ -111,11 +140,27 @@ func (c *City) Run() error {
 		commands []intentEnvelope // intents to submit next tick
 	)
 
+	// Resuming a running city (#73 req 1): the saved world IS the engine's map
+	// state, so the very first call restores instead of generating.
+	if c.resumed {
+		engMap = c.mapState
+		// Saved values survive a deploy; in-memory values do not. Seed the store
+		// and leave memory empty — exactly what a real push produces.
+		for k, v := range c.initialStore {
+			c.storeState[k] = v
+		}
+		// Seed the read model: a restored engine reports only the ticks it runs,
+		// so without this the handlers would read a nearly empty world while the
+		// engine held the full one.
+		mirror.apply(c.prime)
+	}
+
 	for t := int64(0); t < c.ticks; t++ {
 		// 1. Call the engine: current subscriptions, prev map, prev tick's intents.
+		subscribed := c.subscribedEvents()
 		reqBytes, _ := json.Marshal(tickRequest{
-			Config:        tickConfig{City: c.id, Seed: c.seed},
-			Subscriptions: c.subscribedEvents(),
+			Config:        tickConfig{City: c.id, Seed: c.seed, Type: c.moduleType, Config: c.cityConfig},
+			Subscriptions: withLifecycleEvents(subscribed),
 			Map:           engMap,
 			Commands:      commands,
 		})
@@ -140,6 +185,12 @@ func (c *City) Run() error {
 		// 4. Dispatch each emitted event; collect intents for the next tick.
 		var newIntents []intentEnvelope
 		for _, we := range resp.Events {
+			switch we.Event {
+			case lifecycleExpired:
+				mirror.expired++
+			case lifecycleDestroyed:
+				mirror.destroyed++
+			}
 			sev := toSimEvent(c.id, we)
 			for _, env := range c.dispatch(sev) {
 				newIntents = append(newIntents, env)
@@ -175,6 +226,28 @@ func (c *City) Run() error {
 		os.Exit(3)
 	}
 	return nil
+}
+
+// withLifecycleEvents adds the two end-of-life events to what the controller
+// asked for. Dispatch is unaffected — an event with no handler is a no-op — but
+// the runner can now count expiry and energy-death separately regardless of what
+// the controller subscribed to.
+func withLifecycleEvents(subs []string) []string {
+	out := append([]string(nil), subs...)
+	for _, want := range []string{lifecycleExpired, lifecycleDestroyed} {
+		found := false
+		for _, s := range out {
+			if s == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, want)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // subscribedEvents is the sorted set of event names the controller subscribed to;
@@ -333,9 +406,21 @@ func (c *City) printSummary(s summaryData) {
 	fmt.Println(bar)
 	fmt.Println("SUMMARY")
 	fmt.Println(bar)
-	fmt.Printf("  final tick        : %d\n", s.FinalTick)
+	fmt.Printf("  world             : %s\n", c.describeWorld())
+	// A resumed run continues the CITY'S tick numbering, so a bare "final tick"
+	// would imply it started at zero. Show the range it actually covered.
+	if c.resumed {
+		fmt.Printf("  ticks run         : %d -> %d (%d ticks, continuing the city's own numbering)\n",
+			c.saveTick+1, s.FinalTick, c.ticks)
+	} else {
+		fmt.Printf("  final tick        : %d\n", s.FinalTick)
+	}
 	fmt.Printf("  robots            : %d\n", s.Robots)
-	fmt.Printf("  robots destroyed  : %d\n", s.RobotsDestroyed)
+	fmt.Printf("  robots expired    : %d   (end of life — expected; build replacements)\n", s.RobotsExpired)
+	fmt.Printf("  robots destroyed  : %d   (out of energy mid-flight — avoidable; check your charging)\n", s.RobotsDestroyed)
+	if s.RobotsUnattributed > 0 {
+		fmt.Printf("  robots lost (unattributed) : %d\n", s.RobotsUnattributed)
+	}
 	fmt.Printf("  buildings         : %d\n", s.Buildings)
 	if len(s.BuildingsByType) > 0 {
 		keys := make([]string, 0, len(s.BuildingsByType))
@@ -357,15 +442,84 @@ func (c *City) printSummary(s summaryData) {
 	fmt.Printf("  metal (mined/stored): %d / %d\n", s.MetalMined, s.MetalStored)
 	fmt.Printf("  spots found       : %d\n", s.SpotsFound)
 	fmt.Printf("  discovered cells  : %d\n", s.DiscoveredCells)
+	if d := c.readModelDrift(s); d != "" {
+		fmt.Printf("  read model drift  : %s\n", d)
+	}
 	fmt.Printf("  handler errors    : %d", len(c.errors))
 	if len(c.errors) > 0 {
 		fmt.Printf("  <-- your controller raised (see above)")
 	}
 	fmt.Println("")
+	// The verdict keys on handler errors + energy deaths ONLY. A fleet aging out
+	// is normal and must never read as a fault.
+	switch {
+	case len(c.errors) > 0:
+		fmt.Printf("LOCAL-CHECK: FAIL — %d handler error(s); see above\n", len(c.errors))
+	case s.RobotsDestroyed > 0:
+		fmt.Printf("LOCAL-CHECK: PASS — 0 handler errors, but %d robot(s) ran out of energy "+
+			"mid-flight (cargo lost); %d expired at end of life, which is normal\n",
+			s.RobotsDestroyed, s.RobotsExpired)
+	default:
+		fmt.Printf("LOCAL-CHECK: PASS — 0 handler errors, 0 robots destroyed "+
+			"(%d expired at end of life, which is normal)\n", s.RobotsExpired)
+	}
+	fmt.Printf("LOCAL-CHECK: world — %s\n", c.describeWorld())
 }
 
-// jsonOut is the machine-readable document shape: {seed,ticks,city,summary,errors,feed}.
+// readModelDrift reports any gap between what the handlers could SEE and what the
+// engine actually HOLDS. On a resumed run the read model is seeded from the city's
+// display state, read at the city's current tick, which can be newer than the
+// checkpoint the engine restored. The engine's own stats are authoritative, so any
+// disagreement is stated rather than passed off as fact. Empty when they agree.
+func (c *City) readModelDrift(s summaryData) string {
+	if !c.resumed {
+		return ""
+	}
+	er, eb := s.EngineRobots, s.EngineBuildings
+	if er == 0 && eb == 0 {
+		return "" // the engine reported no stats this run
+	}
+	if er == s.Robots && eb == s.Buildings {
+		return ""
+	}
+	return fmt.Sprintf("your handlers saw %d robots / %d buildings; the engine holds %d / %d "+
+		"(the seeded display state was newer than the restored save)",
+		s.Robots, s.Buildings, er, eb)
+}
+
+// describeWorld names the world this run used and where it came from (#73 req 2).
+// Printed in the banner AND in the summary, so a substituted world cannot be
+// mistaken for a normal run.
+func (c *City) describeWorld() string {
+	origin := c.worldOrigin
+	if origin == "" {
+		origin = "unspecified"
+	}
+	out := fmt.Sprintf("seed %d | %s", c.seed, origin)
+	if c.resumed {
+		out += fmt.Sprintf(" | %d saved store key(s) restored", len(c.initialStore))
+	}
+	if len(c.cityConfig) > 0 {
+		keys := make([]string, 0, len(c.cityConfig))
+		for k := range c.cityConfig {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		out += " | config: " + strings.Join(keys, ", ")
+	}
+	start := c.worldStart
+	if start == "" {
+		start = "fresh world at tick 0"
+	}
+	return out + " | " + start
+}
+
+// jsonOut is the machine-readable document shape:
+// {world,seed,ticks,city,summary,errors,feed}. `world` is there so an automated
+// check can ASSERT which world produced the numbers (#73 req 2) — the banner is
+// suppressed under --json, so without it a substitution would be invisible.
 type jsonOut struct {
+	World   jsonWorld      `json:"world"`
 	Seed    int64          `json:"seed"`
 	Ticks   int64          `json:"ticks"`
 	City    string         `json:"city"`
@@ -374,22 +528,35 @@ type jsonOut struct {
 	Feed    []feedLine     `json:"feed"`
 }
 
+type jsonWorld struct {
+	Seed      int64          `json:"seed"`
+	City      string         `json:"city"`
+	Origin    string         `json:"origin"`
+	Config    map[string]any `json:"config,omitempty"`
+	Start     string         `json:"start"`
+	Resumed   bool           `json:"resumed"`
+	StartTick int64          `json:"start_tick"`
+	StoreKeys int            `json:"store_keys"`
+}
+
 type jsonResource struct {
 	Mined  int `json:"mined"`
 	Stored int `json:"stored"`
 }
 
 type jsonSummary struct {
-	FinalTick       int64          `json:"final_tick"`
-	Robots          int            `json:"robots"`
-	RobotsDestroyed int            `json:"robots_destroyed"`
-	Buildings       int            `json:"buildings"`
-	BuildingsByType map[string]int `json:"buildings_by_type"`
-	BaseLevel       int            `json:"base_level"`
-	Ore             jsonResource   `json:"ore"`
-	Metal           jsonResource   `json:"metal"`
-	SpotsFound      int            `json:"spots_found"`
-	DiscoveredCells int            `json:"discovered_cells"`
+	FinalTick          int64          `json:"final_tick"`
+	Robots             int            `json:"robots"`
+	RobotsExpired      int            `json:"robots_expired"`
+	RobotsDestroyed    int            `json:"robots_destroyed"`
+	RobotsUnattributed int            `json:"robots_removed_unattributed"`
+	Buildings          int            `json:"buildings"`
+	BuildingsByType    map[string]int `json:"buildings_by_type"`
+	BaseLevel          int            `json:"base_level"`
+	Ore                jsonResource   `json:"ore"`
+	Metal              jsonResource   `json:"metal"`
+	SpotsFound         int            `json:"spots_found"`
+	DiscoveredCells    int            `json:"discovered_cells"`
 }
 
 func (c *City) printJSON(s summaryData, feed []feedLine) {
@@ -397,20 +564,27 @@ func (c *City) printJSON(s summaryData, feed []feedLine) {
 		feed = []feedLine{}
 	}
 	out := jsonOut{
+		World: jsonWorld{
+			Seed: c.seed, City: c.id, Origin: c.worldOrigin,
+			Config: c.cityConfig, Start: c.worldStart,
+			Resumed: c.resumed, StartTick: c.saveTick, StoreKeys: len(c.initialStore),
+		},
 		Seed:  c.seed,
 		Ticks: c.ticks,
 		City:  c.id,
 		Summary: jsonSummary{
-			FinalTick:       s.FinalTick,
-			Robots:          s.Robots,
-			RobotsDestroyed: s.RobotsDestroyed,
-			Buildings:       s.Buildings,
-			BuildingsByType: s.BuildingsByType,
-			BaseLevel:       s.BaseLevel,
-			Ore:             jsonResource{Mined: s.OreMined, Stored: s.OreStored},
-			Metal:           jsonResource{Mined: s.MetalMined, Stored: s.MetalStored},
-			SpotsFound:      s.SpotsFound,
-			DiscoveredCells: s.DiscoveredCells,
+			FinalTick:          s.FinalTick,
+			Robots:             s.Robots,
+			RobotsExpired:      s.RobotsExpired,
+			RobotsDestroyed:    s.RobotsDestroyed,
+			RobotsUnattributed: s.RobotsUnattributed,
+			Buildings:          s.Buildings,
+			BuildingsByType:    s.BuildingsByType,
+			BaseLevel:          s.BaseLevel,
+			Ore:                jsonResource{Mined: s.OreMined, Stored: s.OreStored},
+			Metal:              jsonResource{Mined: s.MetalMined, Stored: s.MetalStored},
+			SpotsFound:         s.SpotsFound,
+			DiscoveredCells:    s.DiscoveredCells,
 		},
 		Errors: append([]handlerError{}, c.errors...),
 		Feed:   feed,
