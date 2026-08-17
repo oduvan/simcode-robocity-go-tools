@@ -19,7 +19,7 @@ func inspectCmd(args []string) int {
 	errorsFlag := fs.Bool("errors", false, "unhandled exceptions since your last release")
 	release := fs.String("release", "", "with --errors: 'all' or a commit SHA to widen (default: current release)")
 	city := fs.String("city", "", "city slug (default: auto-detected from this repo's git remote)")
-	server := fs.String("server", "https://simcode.lyabah.com", "server base URL")
+	server := fs.String("server", "https://simgit.io", "server base URL")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2

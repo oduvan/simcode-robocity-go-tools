@@ -65,7 +65,7 @@ Options:
 | `--quiet` | suppress the per-tick feed; print only the SUMMARY |
 | `--city SLUG` | city slug whose world to run (default: auto-detected from the git remote) |
 | `--skip-code-check` | don't ask the server whether a deploy would accept this code |
-| `--server URL` | server base URL for engine download + world lookup (default `https://simcode.lyabah.com`) |
+| `--server URL` | server base URL for engine download + world lookup (default `https://simgit.io`) |
 
 ### Start from your city as it is now
 
