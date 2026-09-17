@@ -10,7 +10,7 @@
 //
 // The library is cached at ~/.cache/simcode/engine-<module>-<version>-<platform>.so
 // and re-used when the cached module+version matches. The server base URL is
-// $SIMCODE_SERVER (default https://simgit.io). $SIMCODE_ENGINE_SO overrides
+// $SIMCODE_SERVER (default https://robocity.simgit.io). $SIMCODE_ENGINE_SO overrides
 // everything with an explicit local build (used by the smoke test + engine devs).
 package enginedl
 
@@ -27,7 +27,13 @@ import (
 )
 
 // DefaultServer is the public server used when $SIMCODE_SERVER is unset.
-const DefaultServer = "https://simgit.io"
+// DefaultServer is THE GAME's host, not the hub. `simgit.io` is the hub: it serves
+// sign-in and the landing page, and answers every /api/* path with the SPA's
+// index.html at HTTP 200 — so a tool pointed there does not get an error, it gets
+// HTML and dies parsing it as JSON. That default made `robocity-sim run` and
+// `inspect` fail out of the box for anyone who had not set SIMCODE_SERVER, and was
+// reported three times (forum #26, #27, #28).
+const DefaultServer = "https://robocity.simgit.io"
 
 // ServerBase returns the server base URL ($SIMCODE_SERVER or the default), no slash.
 func ServerBase() string {

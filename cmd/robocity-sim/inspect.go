@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+
+	"github.com/oduvan/simcode-robocity-go-tools/localclient/enginedl"
 )
 
 // inspectCmd prints a city's live info as JSON, no simulation. Everything comes
@@ -19,7 +21,7 @@ func inspectCmd(args []string) int {
 	errorsFlag := fs.Bool("errors", false, "unhandled exceptions since your last release")
 	release := fs.String("release", "", "with --errors: 'all' or a commit SHA to widen (default: current release)")
 	city := fs.String("city", "", "city slug (default: auto-detected from this repo's git remote)")
-	server := fs.String("server", "https://simgit.io", "server base URL")
+	server := fs.String("server", enginedl.DefaultServer, "server base URL")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -107,9 +109,11 @@ func printStatus(server, slug string) int {
 		Buildings []struct {
 			Type string `json:"type"`
 		} `json:"buildings"`
-		Discovered    []json.RawMessage `json:"discovered"`
-		Stats         json.RawMessage   `json:"stats"`
-		HandlerErrors int               `json:"handler_errors"`
+		// RLE runs [y, x0, x1], x0/x1 INCLUSIVE. Decoded (not RawMessage) so the
+		// cell count below is a real count and not a count of runs (forum #30).
+		Discovered    [][]int         `json:"discovered"`
+		Stats         json.RawMessage `json:"stats"`
+		HandlerErrors int             `json:"handler_errors"`
 	}
 	if err := json.Unmarshal(b, &snap); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -122,7 +126,7 @@ func printStatus(server, slug string) int {
 	out := map[string]any{
 		"city": slug, "tick": snap.Tick, "seed": snap.World.Seed,
 		"robots": len(snap.Robots), "buildings": len(snap.Buildings),
-		"buildings_by_type": byType, "discovered_cells": len(snap.Discovered),
+		"buildings_by_type": byType, "discovered_cells": discoveredCells(snap.Discovered),
 		"handler_errors": snap.HandlerErrors,
 	}
 	if len(snap.Stats) > 0 {
@@ -147,4 +151,18 @@ func printJSONBytes(b []byte) int {
 		fmt.Println(string(b))
 	}
 	return 0
+}
+
+// discoveredCells counts the cells the RLE runs cover. `discovered` is
+// [[y, x0, x1], ...] with x0/x1 INCLUSIVE, so len() is the number of RUNS — not
+// what the field is called, and wildly lower than the truth: one city read 40
+// when it had discovered 1198 (forum #30).
+func discoveredCells(runs [][]int) int {
+	total := 0
+	for _, r := range runs {
+		if len(r) >= 3 {
+			total += r[2] - r[1] + 1
+		}
+	}
+	return total
 }

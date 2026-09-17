@@ -14,6 +14,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/oduvan/simcode-robocity-go-tools/localclient/enginedl"
 )
 
 func main() {
@@ -62,7 +64,7 @@ func runCmd(args []string) int {
 	quiet := fs.Bool("quiet", false, "suppress the per-tick feed; print only the summary")
 	city := fs.String("city", "", "city slug whose world to run (default: auto-detected from this repo's git remote)")
 	skipCheck := fs.Bool("skip-code-check", false, "do not ask the server whether a deploy would accept this code")
-	server := fs.String("server", "https://simgit.io", "server base URL (engine download + world lookup)")
+	server := fs.String("server", enginedl.DefaultServer, "server base URL (engine download + world lookup)")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -106,7 +108,7 @@ func checkCmd(args []string) int {
 		args = args[1:]
 	}
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	server := fs.String("server", "https://simgit.io", "server base URL")
+	server := fs.String("server", enginedl.DefaultServer, "server base URL")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -148,7 +150,7 @@ run flags:
   --quiet              suppress the per-tick feed; print only the SUMMARY
   --city SLUG          city slug whose world to run (default: auto-detected from the git remote)
   --skip-code-check    do not ask the server whether a deploy would accept this code
-  --server URL         server base URL for engine download + world lookup (default https://simgit.io)
+  --server URL         server base URL for engine download + world lookup (default https://robocity.simgit.io)
 
 exit codes:
   0 clean   3 your controller panicked   4 a deploy would REJECT this code
