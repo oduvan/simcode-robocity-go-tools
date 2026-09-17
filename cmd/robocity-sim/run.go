@@ -217,8 +217,23 @@ func resumeCaveats(w resolvedWorld) []string {
 		serverVer = "unknown"
 	}
 	if w.engineVersionSource == "save" && w.engineVersion != "" {
-		out = append(out, fmt.Sprintf(" engine check: save was produced by engine %s; "+
-			"the server publishes %s", w.engineVersion, serverVer))
+		// Saves record the build that wrote them (forum #31), so this is a real
+		// check now rather than two version strings side by side. Say the VERDICT:
+		// a mismatch is the case that silently zeroes part of the world.
+		switch {
+		case serverVer != "unknown" && w.engineVersion == serverVer:
+			out = append(out, fmt.Sprintf(" engine check: OK — this save was produced by engine %s, "+
+				"the same build you are running.", w.engineVersion))
+		case serverVer != "unknown":
+			out = append(out,
+				fmt.Sprintf(" engine check: MISMATCH — this save was produced by engine %s, "+
+					"but you are running %s.", w.engineVersion, serverVer),
+				"               A mismatched engine restores a partly-zeroed world WITHOUT any error.",
+				"               Re-download the engine, or run --canonical.")
+		default:
+			out = append(out, fmt.Sprintf(" engine check: save was produced by engine %s; "+
+				"this server publishes no engine version to compare with.", w.engineVersion))
+		}
 	} else {
 		out = append(out,
 			" engine check: NOT POSSIBLE — this save records no engine version, so I",
